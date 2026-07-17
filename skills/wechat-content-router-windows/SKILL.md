@@ -1,7 +1,7 @@
 ---
 name: wechat-content-router-windows
 description: >
-  Windows 版微信内容路由 skill。把微信里转来的内容链接自动识别并导入 Obsidian 或本地普通文件夹。当前优先支持“小红书链接/分享文案”和“微信公众号文章链接”。当前版本先完成 Windows 版本入口拆分，OCR 后端待补。不要用于批量扫描整个微信，也不要用于社交互动。
+  Windows 版微信内容路由 skill。把微信里转来的内容链接自动识别并导入 Obsidian 或本地普通文件夹。当前优先支持“小红书链接/分享文案”和“微信公众号文章链接”。Windows OCR 使用 PaddleOCR。不要用于批量扫描整个微信，也不要用于社交互动。
 ---
 
 # wechat-content-router-windows
@@ -11,6 +11,11 @@ description: >
 它不只处理小红书，还处理微信公众号；而且不一定非要进 Obsidian，也可以直接下载到本地文件夹。
 
 这个版本是为了把 Windows 发布入口单独拆出来，避免用户误装 macOS OCR 版。
+
+当前 Windows OCR 后端：
+
+- `PaddleOCR`
+- `PaddlePaddle CPU`
 
 ## 什么时候用
 
@@ -27,7 +32,7 @@ description: >
 ## 平台说明
 
 - 平台：**Windows**
-- OCR：**当前版本待补**
+- OCR：**可用（PaddleOCR）**
 
 ## 工作流
 

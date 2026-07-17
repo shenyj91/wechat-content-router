@@ -21,7 +21,7 @@
 ### 2）Windows 版
 - skill 名：`wechat-content-router-windows`
 - 适合：Windows 用户
-- 当前定位：Windows 分支骨架 / 后续补 OCR 后端
+- OCR：使用 **PaddleOCR**
 - 目标：替换 macOS 专属 OCR 方案
 
 ---
@@ -102,13 +102,13 @@ cp -R skills/wechat-content-router-macos/. ~/.codex/skills/wechat-content-router
 适合：
 
 - Windows 用户
-- 先用导入链路
-- 后续接 Windows OCR 后端
+- 需要 Windows OCR
+- 想单独安装 Windows 版
 
 当前特点：
 
 - 微信入口路由结构已拆分
-- 便于后续补 Windows 专用 OCR
+- Windows OCR 已切到 PaddleOCR
 
 ---
 
@@ -163,6 +163,7 @@ wechat-content-router-skill/
 
 - [INSTALL.md](INSTALL.md)
 - [USAGE.md](USAGE.md)
+- [WINDOWS-SETUP.md](WINDOWS-SETUP.md)
 - [LAUNCH-COPY.md](LAUNCH-COPY.md)
 - [macOS skill](skills/wechat-content-router-macos/SKILL.md)
 - [Windows skill](skills/wechat-content-router-windows/SKILL.md)

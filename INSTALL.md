@@ -23,6 +23,13 @@
 python3 -m pip install browser-cookie3 requests lxml zstandard
 ```
 
+如果你安装 **Windows 版** 并需要 OCR，还要额外安装：
+
+```bash
+python -m pip install paddlepaddle==3.2.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+python -m pip install "paddleocr[all]"
+```
+
 ---
 
 ## 二、安装到 Codex
@@ -67,6 +74,10 @@ cp -R skills/wechat-content-router-macos/. ~/.codex/skills/wechat-content-router
 mkdir -p ~/.codex/skills/wechat-content-router-windows
 cp -R skills/wechat-content-router-windows/. ~/.codex/skills/wechat-content-router-windows/
 ```
+
+Windows 版当前 OCR 后端是：
+
+- `PaddleOCR`
 
 ---
 

@@ -32,7 +32,7 @@ USER_AGENT = (
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = SCRIPT_DIR / "config.json"
-OCR_SCRIPT_PATH = SCRIPT_DIR / "ocr.swift"
+OCR_SCRIPT_PATH = SCRIPT_DIR / "ocr_paddle.py"
 OCR_CORRECTIONS_PATH = SCRIPT_DIR / "ocr_corrections.json"
 XHS_URL_RE = re.compile(r"https?://(?:www\.)?(?:xiaohongshu\.com|xhslink\.com)/[^\s<>\"]+")
 
@@ -331,8 +331,11 @@ def clean_ocr_text(text):
 def run_ocr(image_paths):
     if not image_paths:
         return []
-    command = ["/usr/bin/swift", str(OCR_SCRIPT_PATH), *[str(path) for path in image_paths]]
-    result = subprocess.run(command, capture_output=True, text=True, check=True)
+    command = [sys.executable, str(OCR_SCRIPT_PATH), *[str(path) for path in image_paths]]
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(message or "Windows OCR backend failed")
     parsed = json.loads(result.stdout or "{}")
     items = []
     for item in parsed.get("items") or []:
