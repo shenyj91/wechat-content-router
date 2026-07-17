@@ -9,14 +9,26 @@
   },
   "plugins": [
     {
-      "name": "wechat-content-router",
-      "description": "Route WeChat-shared XiaoHongShu and WeChat MP links into Obsidian Markdown.",
+      "name": "wechat-content-router-macos",
+      "description": "macOS version: route WeChat-shared XiaoHongShu and WeChat MP links into Obsidian or local folders.",
       "version": "0.1.0",
       "author": {
         "name": "shenyj91",
         "url": "https://github.com/shenyj91"
       },
-      "source": "./",
+      "source": "./skills/wechat-content-router-macos",
+      "category": "productivity",
+      "homepage": "https://github.com/shenyj91/wechat-content-router"
+    },
+    {
+      "name": "wechat-content-router-windows",
+      "description": "Windows version: route WeChat-shared XiaoHongShu and WeChat MP links into Obsidian or local folders.",
+      "version": "0.1.0",
+      "author": {
+        "name": "shenyj91",
+        "url": "https://github.com/shenyj91"
+      },
+      "source": "./skills/wechat-content-router-windows",
       "category": "productivity",
       "homepage": "https://github.com/shenyj91/wechat-content-router"
     }

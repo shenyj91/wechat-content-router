@@ -1,199 +1,114 @@
 # wechat-content-router
 
-> 把**微信里转来的内容链接**，自动识别并落成你自己的资料。  
-> 当前优先支持：**小红书**、**微信公众号**。  
-> 可落到 **Obsidian**，也可直接落到**本地文件夹**。
+> 一个 **WeChat-first** 的内容导入 skill。  
+> 现在按平台拆成两个发布版本：**macOS 版** 和 **Windows 版**。
 
-[![Agent Skills](https://img.shields.io/badge/Agent%20Skills-wechat--content--router-blueviolet)](skills/wechat-content-router/SKILL.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Codex-black)](#快速开始)
+[![Platform](https://img.shields.io/badge/platform-Codex-black)](#安装哪个版本)
 
 ---
 
-## 这是什么
+## 现在的发布方式
 
-`wechat-content-router` 不是一个“只处理某个平台链接”的小工具，  
-而是一个更适合真实使用场景的 **微信入口母 skill**：
+这个仓库现在不是单一 skill，而是**双版本发布**：
 
-- 你把链接转到微信
-- 它自动识别链接类型
-- 再分发到对应 importer
-- 最后把内容落到你的知识库或本地目录
+### 1）macOS 版
+- skill 名：`wechat-content-router-macos`
+- 适合：macOS 用户
+- OCR：使用 **Swift + Vision**
+- 特点：原生、本地、中文 OCR 体验更顺
 
-它解决的不是“打开链接”，而是：
-
-- **把内容真正存下来**
-- **把资料变成可搜索、可复用的资产**
-- **减少手工复制、判断、整理的重复劳动**
-
----
-
-## 适合谁
-
-适合这些人：
-
-- 想把小红书 / 公号内容系统化沉淀的人
-- 做知识库、资料归档、选题库的人
-- 想把微信 filehelper 变成“内容收集入口”的人
-- 不想折腾 Obsidian，只想先下载到本地的人
+### 2）Windows 版
+- skill 名：`wechat-content-router-windows`
+- 适合：Windows 用户
+- 当前定位：Windows 分支骨架 / 后续补 OCR 后端
+- 目标：替换 macOS 专属 OCR 方案
 
 ---
 
-## 现在能做什么
+## 为什么拆成两个版本
 
-### 支持的输入
+因为当前 OCR 能力有平台差异：
 
-| 输入 | 路由 | 输出 |
-|---|---|---|
-| 小红书链接 / 分享文案 | `xhs` | Markdown + 图片 + 可选 OCR |
-| 微信公众号文章链接 | `mp` | Markdown + 原文链接 + 公众号信息 |
-| 微信 filehelper 最近消息 | 自动识别 | 自动路由到对应 importer |
+- **macOS**：可以直接用 `Swift + Vision`
+- **Windows**：不能跑 `AppKit / Vision / /usr/bin/swift`
 
-### 支持的落地模式
+所以继续用一个完全相同的 skill 名，会让普通用户误以为“所有系统都一样能跑”。
 
-| 模式 | 适合场景 |
-|---|---|
-| Obsidian | 做知识库、长期整理、标签检索 |
-| Local | 不用 Obsidian，只想先把内容存本地 |
+拆成两个版本以后更清楚：
+
+- macOS 用户装 macOS 版
+- Windows 用户装 Windows 版
 
 ---
 
-## 为什么不是“单一小红书 skill”
+## 它们共同解决什么问题
 
-真实使用里，用户入口通常不是平台本身，而是：
+这两个版本都围绕同一个目标：
 
-1. 先把内容转到微信
-2. 再从微信 filehelper 或某个聊天里处理
-3. 这个链接可能是小红书，也可能是公众号
+**把微信里转来的内容链接，落成你自己的资料。**
 
-所以更合理的产品形态应该是：
+支持的主要内容：
 
-- **统一配置**
-- **统一微信入口**
-- **多内容路由**
-- **多落地方式**
+- 小红书链接 / 分享文案
+- 微信公众号文章链接
 
-这就是 `wechat-content-router` 的定位。
+支持的落地方式：
+
+- 导入 Obsidian
+- 直接下载到本地文件夹
 
 ---
 
-## 快速开始
+## 安装哪个版本
 
-### 1）安装依赖
+### 安装 macOS 版
 
 ```bash
-python3 -m pip install browser-cookie3 requests lxml zstandard
+mkdir -p ~/.codex/skills/wechat-content-router-macos
+cp -R skills/wechat-content-router-macos/. ~/.codex/skills/wechat-content-router-macos/
 ```
 
-### 2）安装到 Codex
+### 安装 Windows 版
 
-#### 方法 A：一键安装
+请安装：
 
-```bash
-bash scripts/install-to-codex.sh
-```
+- `skills/wechat-content-router-windows`
 
-#### 方法 B：手工复制
-
-```bash
-mkdir -p ~/.codex/skills/wechat-content-router
-cp -R skills/wechat-content-router/. ~/.codex/skills/wechat-content-router/
-```
+如果后续要给普通 Windows 用户分发，我们会继续补齐单独的 Windows 安装说明和 OCR 后端。
 
 ---
 
-## 配置方式
+## 版本说明
 
-### 方案 A：导入 Obsidian
+### wechat-content-router-macos
 
-```bash
-python3 ~/.codex/skills/wechat-content-router/scripts/init_local_config.py \
-  --mode obsidian \
-  --vault-root "/Users/yourname/Documents/ObsidianVault"
-```
+适合：
 
-### 方案 B：直接下载到本地目录
+- macOS 用户
+- 需要图片 OCR
+- 想直接用系统原生 OCR
 
-```bash
-python3 ~/.codex/skills/wechat-content-router/scripts/init_local_config.py \
-  --mode local \
-  --local-root "/Users/yourname/Documents/ImportedContent"
-```
+当前特点：
 
-生成后配置文件在：
+- 微信入口路由
+- 小红书导入
+- 公众号导入
+- Obsidian / Local 双落地
+- macOS OCR 可用
 
-```text
-~/.codex/skills/wechat-content-router/scripts/config.json
-```
+### wechat-content-router-windows
 
----
+适合：
 
-## 使用方式
+- Windows 用户
+- 先用导入链路
+- 后续接 Windows OCR 后端
 
-### 方式 1：直接处理单条内容
+当前特点：
 
-#### 小红书
-
-```bash
-python3 ~/.codex/skills/wechat-content-router/scripts/import_xhs_note.py "小红书链接或整段分享文案"
-```
-
-#### 微信公众号
-
-```bash
-python3 ~/.codex/skills/wechat-content-router/scripts/import_wechat_mp_article.py "公众号文章链接"
-```
-
-### 方式 2：从微信自动路由
-
-补好 `config.json` 里的微信路径后运行：
-
-```bash
-python3 ~/.codex/skills/wechat-content-router/scripts/run_wechat_router_pipeline.py
-```
-
-它会：
-
-1. 读取微信最近消息
-2. 抽取链接
-3. 判断类型
-4. 调用对应 importer
-5. 落到 Obsidian / 本地目录
-6. 记录状态，避免重复导入
-
----
-
-## 在 Codex 里怎么说
-
-```text
-用 $wechat-content-router 把这条公众号链接导入 Obsidian。
-```
-
-```text
-用 $wechat-content-router 把这条小红书分享文案导入本地文件夹。
-```
-
-```text
-用 $wechat-content-router 跑一次最近微信 filehelper 的链接自动导入。
-```
-
----
-
-## 当前版本能力边界
-
-当前版本已经支持：
-
-- `xhs`：小红书导入
-- `mp`：微信公众号导入
-- `wechat router`：从指定微信会话自动抓最近链接
-- `obsidian / local`：双落地模式
-
-后续可继续扩展：
-
-- Quark 路由
-- 百度网盘路由
-- 会话选择器
-- 更友好的普通用户安装流程
+- 微信入口路由结构已拆分
+- 便于后续补 Windows 专用 OCR
 
 ---
 
@@ -204,6 +119,7 @@ wechat-content-router-skill/
 ├── README.md
 ├── INSTALL.md
 ├── USAGE.md
+├── LAUNCH-COPY.md
 ├── LICENSE
 ├── .claude-plugin/
 │   └── marketplace.json
@@ -212,30 +128,44 @@ wechat-content-router-skill/
 ├── examples/
 │   └── sample-router-output.json
 └── skills/
-    └── wechat-content-router/
+    ├── wechat-content-router-macos/
+    │   ├── SKILL.md
+    │   ├── agents/openai.yaml
+    │   ├── references/
+    │   └── scripts/
+    └── wechat-content-router-windows/
         ├── SKILL.md
         ├── agents/openai.yaml
         ├── references/
-        │   ├── config-template.json
-        │   └── routes.md
         └── scripts/
-            ├── init_local_config.py
-            ├── import_xhs_note.py
-            ├── import_wechat_mp_article.py
-            ├── import_latest_wechat_links.py
-            ├── run_wechat_router_pipeline.py
-            ├── ocr.swift
-            └── ocr_corrections.json
 ```
 
 ---
 
-## 你还可以看
+## 当前建议
+
+### 如果你现在就是要真实使用
+优先用：
+
+- **macOS 版**
+
+### 如果你现在是为了先把结构发布出去
+可以保留：
+
+- macOS 版可用
+- Windows 版作为独立版本入口
+
+这样仓库对外结构已经清楚，后面再继续补 Windows OCR。
+
+---
+
+## 相关文件
 
 - [INSTALL.md](INSTALL.md)
 - [USAGE.md](USAGE.md)
-- [skills/wechat-content-router/SKILL.md](skills/wechat-content-router/SKILL.md)
-- [examples/sample-router-output.json](examples/sample-router-output.json)
+- [LAUNCH-COPY.md](LAUNCH-COPY.md)
+- [macOS skill](skills/wechat-content-router-macos/SKILL.md)
+- [Windows skill](skills/wechat-content-router-windows/SKILL.md)
 
 ---
 

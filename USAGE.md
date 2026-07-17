@@ -30,13 +30,13 @@
 ### 小红书
 
 ```bash
-python3 ~/.codex/skills/wechat-content-router/scripts/import_xhs_note.py "小红书链接或整段分享文案"
+python3 ~/.codex/skills/wechat-content-router-macos/scripts/import_xhs_note.py "小红书链接或整段分享文案"
 ```
 
 ### 公众号
 
 ```bash
-python3 ~/.codex/skills/wechat-content-router/scripts/import_wechat_mp_article.py "公众号文章链接"
+python3 ~/.codex/skills/wechat-content-router-macos/scripts/import_wechat_mp_article.py "公众号文章链接"
 ```
 
 ---
@@ -44,7 +44,7 @@ python3 ~/.codex/skills/wechat-content-router/scripts/import_wechat_mp_article.p
 ## 三、微信自动模式怎么用
 
 ```bash
-python3 ~/.codex/skills/wechat-content-router/scripts/run_wechat_router_pipeline.py
+python3 ~/.codex/skills/wechat-content-router-macos/scripts/run_wechat_router_pipeline.py
 ```
 
 内部流程：
@@ -86,17 +86,17 @@ python3 ~/.codex/skills/wechat-content-router/scripts/run_wechat_router_pipeline
 ### 例子 1
 
 ```text
-用 $wechat-content-router 把这条小红书分享文案导入我的本地文件夹。
+用 $wechat-content-router-macos 把这条小红书分享文案导入我的本地文件夹。
 ```
 
 ### 例子 2
 
 ```text
-用 $wechat-content-router 把这条公众号文章导入 Obsidian。
+用 $wechat-content-router-macos 把这条公众号文章导入 Obsidian。
 ```
 
 ### 例子 3
 
 ```text
-用 $wechat-content-router 跑一次最近微信 filehelper 的链接自动导入。
+用 $wechat-content-router-macos 跑一次最近微信 filehelper 的链接自动导入。
 ```
