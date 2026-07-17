@@ -23,7 +23,17 @@
     },
     "mp": {
       "enabled": true,
-      "import_root": "微信导入/公众号"
+      "import_root": "微信导入/公众号",
+      "save_pdf": false,
+      "prefer_pdf_preview": false,
+      "pdf_source": "browser_render"
+    },
+    "feishu": {
+      "enabled": false,
+      "import_root": "微信导入/飞书",
+      "save_pdf": true,
+      "prefer_pdf_preview": true,
+      "pdf_source": "browser_render"
     }
   },
   "wechat": {

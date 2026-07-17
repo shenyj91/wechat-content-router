@@ -52,6 +52,16 @@ def main():
             "mp": {
                 "enabled": True,
                 "import_root": "微信导入/公众号",
+                "save_pdf": args.mode == "local",
+                "prefer_pdf_preview": args.mode == "local",
+                "pdf_source": "browser_render",
+            },
+            "feishu": {
+                "enabled": False,
+                "import_root": "微信导入/飞书",
+                "save_pdf": True,
+                "prefer_pdf_preview": True,
+                "pdf_source": "browser_render",
             },
         },
         "wechat": {

@@ -30,6 +30,13 @@ description: >
 - `xhs`：小红书链接 / 分享文案
 - `mp`：微信公众号文章链接
 
+公众号路由支持可选：
+
+- 同时保存 `.pdf`
+- 默认优先看 PDF 版式（当 `prefer_pdf_preview=true`）
+
+当 `storage.mode=local` 时，公众号路由默认按 **PDF 主产物** 处理。
+
 ## 平台说明
 
 - 平台：**macOS**

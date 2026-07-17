@@ -6,6 +6,8 @@ import argparse
 import json
 import os
 import re
+import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -13,6 +15,7 @@ import requests
 from lxml import etree, html
 
 DEFAULT_CONFIG_PATH = Path(__file__).with_name("config.json")
+PDF_RENDER_SCRIPT_PATH = Path(__file__).with_name("render_wechat_mp_pdf.mjs")
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0 Safari/537.36"
@@ -43,6 +46,14 @@ def route_config(config: dict) -> dict:
     route = ((config.get("routes") or {}).get("mp") or {}).copy()
     route.setdefault("enabled", True)
     route.setdefault("import_root", "微信导入/公众号")
+    storage_mode = ((config.get("storage") or {}).get("mode") or "obsidian").lower()
+    route.setdefault("pdf_source", "browser_render")
+    if storage_mode == "local":
+        route["save_pdf"] = True
+        route["prefer_pdf_preview"] = True
+    else:
+        route.setdefault("save_pdf", False)
+        route.setdefault("prefer_pdf_preview", bool(route.get("save_pdf")))
     return route
 
 
@@ -77,6 +88,19 @@ def unique_md_path(folder: Path, title: str, overwrite: bool = False) -> Path:
     counter = 2
     while True:
         candidate = folder / f"{base} {counter}.md"
+        if not candidate.exists():
+            return candidate
+        counter += 1
+
+
+def unique_pdf_path(folder: Path, title: str, overwrite: bool = False) -> Path:
+    base = sanitize_file_name(title)
+    candidate = folder / f"{base}.pdf"
+    if overwrite or not candidate.exists():
+        return candidate
+    counter = 2
+    while True:
+        candidate = folder / f"{base} {counter}.pdf"
         if not candidate.exists():
             return candidate
         counter += 1
@@ -206,6 +230,20 @@ def build_markdown(*, title: str, account_name: str, author: str, publish_time: 
     return "\n".join(lines).strip() + "\n"
 
 
+def render_pdf(url: str, pdf_path: Path) -> None:
+    if not PDF_RENDER_SCRIPT_PATH.exists():
+        raise FileNotFoundError(f"PDF render script not found: {PDF_RENDER_SCRIPT_PATH}")
+    node_cmd = os.environ.get("PLAYWRIGHT_NODE") or "node"
+    result = subprocess.run(
+        [node_cmd, str(PDF_RENDER_SCRIPT_PATH), url, str(pdf_path)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(message or "Playwright PDF render failed")
+
+
 def import_article(url: str, config=None, overwrite: bool = False) -> dict[str, str | int]:
     config = config or load_config()
     route = route_config(config)
@@ -226,6 +264,8 @@ def import_article(url: str, config=None, overwrite: bool = False) -> dict[str, 
     target_folder = resolve_vault_path(config, route["import_root"])
     target_folder.mkdir(parents=True, exist_ok=True)
     note_path = unique_md_path(target_folder, title, overwrite=overwrite)
+    pdf_path = None
+    pdf_error = ""
     markdown = build_markdown(
         title=title,
         account_name=account_name,
@@ -235,13 +275,23 @@ def import_article(url: str, config=None, overwrite: bool = False) -> dict[str, 
         body=body,
     )
     note_path.write_text(markdown, encoding="utf-8")
+    if route.get("save_pdf", False):
+        pdf_candidate = unique_pdf_path(target_folder, title, overwrite=overwrite)
+        try:
+            render_pdf(final_url, pdf_candidate)
+            pdf_path = pdf_candidate
+        except Exception as error:
+            pdf_error = str(error)
     return {
         "note_path": str(note_path),
+        "pdf_path": str(pdf_path) if pdf_path else "",
+        "preview_path": str(pdf_path) if (pdf_path and route.get("prefer_pdf_preview", True)) else str(note_path),
         "title": title,
         "account_name": account_name,
         "body_length": len(body),
         "source_url": final_url,
         "config_path": config.get("_config_path", ""),
+        "pdf_error": pdf_error,
     }
 
 

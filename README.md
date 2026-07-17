@@ -22,7 +22,7 @@
 - skill 名：`wechat-content-router-windows`
 - 适合：Windows 用户
 - OCR：使用 **PaddleOCR**
-- 目标：替换 macOS 专属 OCR 方案
+- 状态：已接入 OCR 后端，建议先做本机验证
 
 ---
 
@@ -58,11 +58,25 @@
 - 导入 Obsidian
 - 直接下载到本地文件夹
 
+### 本地模式（local mode）规则
+
+当用户选择 **保存到本地** 时，仓库的母规则是：
+
+- **PDF 作为主交付物**
+- `preview_path` 默认优先指向 PDF
+- Markdown / 图片 / 元信息作为备份产物保留
+
+当前落地情况：
+
+- 公众号：**已接入浏览器渲染后导出 PDF**
+- 飞书：**已预留路由，等页面渲染稳定后接入**
+- 小红书：当前主链路仍是 Markdown + 图片，后续再补本地渲染 PDF
+
 ---
 
 ## 安装哪个版本
 
-### 安装 macOS 版
+### 安装 macOS 版（Codex / 兼容 skill 目录）
 
 ```bash
 mkdir -p ~/.codex/skills/wechat-content-router-macos
@@ -74,6 +88,39 @@ cp -R skills/wechat-content-router-macos/. ~/.codex/skills/wechat-content-router
 请安装：
 
 - `skills/wechat-content-router-windows`
+
+### 如果你不是装到 Codex
+
+如果你是装到**其他智能体**，或者只是把仓库当普通本地工具目录来跑，不需要用：
+
+```text
+~/.codex/skills/...
+```
+
+直接进入仓库里的 skill 目录执行脚本即可，例如：
+
+```bash
+cd skills/wechat-content-router-windows
+python scripts/ocr_paddle.py D:\\test\\1.jpg
+```
+
+如果你要让公众号内容同时导出 PDF，还需要在对应 skill 目录安装 Playwright：
+
+```bash
+cd skills/wechat-content-router-macos && npm install
+```
+
+或：
+
+```bash
+cd skills/wechat-content-router-windows && npm install
+```
+
+首次安装 Playwright 后，建议继续执行：
+
+```bash
+npx playwright install chromium
+```
 
 如果后续要给普通 Windows 用户分发，我们会继续补齐单独的 Windows 安装说明和 OCR 后端。
 
@@ -108,7 +155,9 @@ cp -R skills/wechat-content-router-macos/. ~/.codex/skills/wechat-content-router
 当前特点：
 
 - 微信入口路由结构已拆分
-- Windows OCR 已切到 PaddleOCR
+- Windows OCR 已切到 PaddleOCR（建议先本机验证）
+- 公众号本地模式支持 PDF 主产物
+- 飞书路由已预留
 
 ---
 
@@ -149,13 +198,12 @@ wechat-content-router-skill/
 
 - **macOS 版**
 
-### 如果你现在是为了先把结构发布出去
-可以保留：
+### 如果你现在要把它给别人装
+建议按这条规则理解：
 
-- macOS 版可用
-- Windows 版作为独立版本入口
-
-这样仓库对外结构已经清楚，后面再继续补 Windows OCR。
+- 装到 Codex：按 skill 安装方式
+- 装到其他智能体：按普通目录运行方式
+- 选择 local mode：默认按 **PDF 主产物** 的思路理解输出
 
 ---
 

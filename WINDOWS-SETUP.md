@@ -50,6 +50,11 @@ Python 3.10.x
 
 ## 三、安装 Windows 版 skill
 
+你有两种跑法：
+
+1. 装进 Codex / skill 目录
+2. 不装进 Codex，直接从仓库目录运行
+
 把仓库里的这个目录复制到本地：
 
 ```text
@@ -68,6 +73,34 @@ skills/wechat-content-router-windows
 New-Item -ItemType Directory -Force -Path $env:USERPROFILE\.codex\skills\wechat-content-router-windows
 Copy-Item -Recurse -Force .\skills\wechat-content-router-windows\* $env:USERPROFILE\.codex\skills\wechat-content-router-windows\
 ```
+
+### 如果你不是用 Codex 安装
+
+直接进入仓库目录：
+
+```powershell
+cd .\skills\wechat-content-router-windows
+```
+
+然后用：
+
+```powershell
+python .\scripts\ocr_paddle.py D:\test\1.jpg
+```
+
+或：
+
+```powershell
+python .\scripts\import_xhs_note.py "小红书链接或整段分享文案"
+```
+
+不要写死成：
+
+```text
+%USERPROFILE%\.codex\skills\...
+```
+
+除非你真的就是装在那个目录里。
 
 ---
 
@@ -90,6 +123,33 @@ python -m pip install paddlepaddle==3.2.0 -i https://www.paddlepaddle.org.cn/pac
 ```bash
 python -m pip install "paddleocr[all]"
 ```
+
+### 如果要让公众号同时导出 PDF
+
+进入 Windows 版 skill 目录后安装：
+
+```bash
+npm install
+```
+
+再执行：
+
+```bash
+npx playwright install chromium
+```
+
+### local mode 的规则
+
+当用户选择 **保存到本地** 时，默认按：
+
+- **PDF 作为主交付物**
+- Markdown / 图片 / 元信息作为备份
+
+当前已落地：
+
+- 公众号：浏览器渲染 PDF
+- 飞书：预留
+- 小红书：后续补本地渲染 PDF
 
 如果你不需要 OCR，也可以先不装 PaddleOCR，只把配置里的：
 
@@ -166,6 +226,20 @@ python %USERPROFILE%\.codex\skills\wechat-content-router-windows\scripts\import_
 
 如果 `ocr_length > 0`，说明 OCR 路径已经跑通。
 
+## 七点五、验证公众号本地 PDF
+
+如果你启用：
+
+```json
+"save_pdf": true,
+"prefer_pdf_preview": true
+```
+
+那么公众号导入后，返回结果里应该优先看到：
+
+- `pdf_path`
+- `preview_path`
+
 ---
 
 ## 八、常见问题
@@ -223,3 +297,9 @@ python -c "import sys; print(sys.executable)"
 - 再单独打开 OCR 测试
 
 这样定位问题最快。
+
+如果你现在最在意“客户本地下载看起来像页面原样”，优先先测：
+
+1. 公众号导入
+2. PDF 是否成功生成
+3. `preview_path` 是否指向 PDF

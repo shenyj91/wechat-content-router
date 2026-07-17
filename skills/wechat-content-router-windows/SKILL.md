@@ -29,10 +29,17 @@ description: >
 - `xhs`：小红书链接 / 分享文案
 - `mp`：微信公众号文章链接
 
+公众号路由支持可选：
+
+- 同时保存 `.pdf`
+- 默认优先看 PDF 版式（当 `prefer_pdf_preview=true`）
+
+当 `storage.mode=local` 时，公众号路由默认按 **PDF 主产物** 处理。
+
 ## 平台说明
 
 - 平台：**Windows**
-- OCR：**可用（PaddleOCR）**
+- OCR：**已接入（PaddleOCR，建议先本机验证）**
 
 ## 工作流
 

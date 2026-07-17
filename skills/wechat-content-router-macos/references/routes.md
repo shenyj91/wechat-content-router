@@ -4,6 +4,7 @@
 
 - `xhs`：匹配 `xiaohongshu.com` / `xhslink.com`
 - `mp`：匹配 `mp.weixin.qq.com`
+- `feishu`：预留飞书页面导入路由
 
 保留扩展位：
 
@@ -16,3 +17,7 @@
 2. 先判断类型，再调用对应 importer
 3. 每条消息生成稳定 `message_key`，避免重复导入
 4. 所有本地路径都必须走配置，不写死个人目录
+5. 当 `storage.mode=local` 时，默认按 **PDF 主产物** 的规则理解输出
+6. 公众号 PDF 来源：`browser_render`
+7. 飞书路由先预留，等本地页面渲染稳定后接入
+8. 当前真正已经落地 browser-render PDF 的，是 `mp` 路由
