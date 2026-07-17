@@ -1,0 +1,19 @@
+{
+  "status": "ok",
+  "import": {
+    "status": "imported",
+    "count": 2,
+    "imports": [
+      {
+        "type": "xhs",
+        "title": "一篇小红书笔记",
+        "note_path": "/Users/yourname/Documents/ObsidianVault/微信导入/小红书/一篇小红书笔记.md"
+      },
+      {
+        "type": "mp",
+        "title": "一篇公众号文章",
+        "note_path": "/Users/yourname/Documents/ObsidianVault/微信导入/公众号/一篇公众号文章.md"
+      }
+    ]
+  }
+}
