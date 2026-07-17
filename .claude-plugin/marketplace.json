@@ -1,8 +1,8 @@
 {
   "name": "wechat-content-router",
   "owner": {
-    "name": "syj",
-    "url": "https://github.com/syj"
+    "name": "shenyj91",
+    "url": "https://github.com/shenyj91"
   },
   "metadata": {
     "description": "Route WeChat-shared XiaoHongShu and WeChat MP links into Obsidian Markdown."
@@ -13,12 +13,12 @@
       "description": "Route WeChat-shared XiaoHongShu and WeChat MP links into Obsidian Markdown.",
       "version": "0.1.0",
       "author": {
-        "name": "syj",
-        "url": "https://github.com/syj"
+        "name": "shenyj91",
+        "url": "https://github.com/shenyj91"
       },
       "source": "./",
       "category": "productivity",
-      "homepage": "https://github.com/syj/wechat-content-router"
+      "homepage": "https://github.com/shenyj91/wechat-content-router"
     }
   ]
 }
