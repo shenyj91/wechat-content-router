@@ -19,7 +19,10 @@
     "xhs": {
       "enabled": true,
       "import_root": "微信导入/小红书",
-      "asset_root": "微信导入/小红书/assets"
+      "asset_root": "微信导入/小红书/assets",
+      "save_pdf": false,
+      "prefer_pdf_preview": false,
+      "pdf_source": "browser_render"
     },
     "mp": {
       "enabled": true,

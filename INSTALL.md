@@ -112,9 +112,8 @@ Windows 版当前 OCR 后端是：
 
 说明：
 
-- 公众号在 `storage.mode=local` 时会强制走 **PDF 主产物**
+- 公众号和小红书在 `storage.mode=local` 时都会强制走 **PDF 主产物**
 - 飞书路由已经预留，但还没接入最终渲染链路
-- 小红书本地 PDF 仍是后续增强项
 
 ---
 
@@ -164,6 +163,9 @@ python3 ~/.codex/skills/wechat-content-router-macos/scripts/init_local_config.py
 
 `--mode local` 生成的配置会默认带上：
 
+- `routes.xhs.save_pdf = true`
+- `routes.xhs.prefer_pdf_preview = true`
+- `routes.xhs.pdf_source = "browser_render"`
 - `routes.mp.save_pdf = true`
 - `routes.mp.prefer_pdf_preview = true`
 - `routes.mp.pdf_source = "browser_render"`

@@ -124,6 +124,7 @@ python3 scripts/run_wechat_router_pipeline.py
 输出通常包括：
 
 - Markdown 笔记
+- PDF（当开启 `save_pdf` 且走本地模式时）
 - 图片文件
 - OCR 文本
 - 原始来源链接
@@ -150,12 +151,12 @@ python3 scripts/run_wechat_router_pipeline.py
 当前已经落地：
 
 - 公众号：是
+- 小红书：是
 - 飞书：预留
-- 小红书：后续补本地渲染 PDF
 
 所以现在最稳的理解是：
 
-- **本地模式下的 PDF-first，当前已经真正落地在公众号路由**
+- **本地模式下的 PDF-first，当前已经真正落地在公众号和小红书路由**
 
 ---
 

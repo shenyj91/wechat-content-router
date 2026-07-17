@@ -124,7 +124,7 @@ python -m pip install paddlepaddle==3.2.0 -i https://www.paddlepaddle.org.cn/pac
 python -m pip install "paddleocr[all]"
 ```
 
-### 如果要让公众号同时导出 PDF
+### 如果要让公众号 / 小红书同时导出 PDF
 
 进入 Windows 版 skill 目录后安装：
 
@@ -148,8 +148,8 @@ npx playwright install chromium
 当前已落地：
 
 - 公众号：浏览器渲染 PDF
+- 小红书：浏览器渲染 PDF
 - 飞书：预留
-- 小红书：后续补本地渲染 PDF
 
 如果你不需要 OCR，也可以先不装 PaddleOCR，只把配置里的：
 
@@ -226,7 +226,7 @@ python %USERPROFILE%\.codex\skills\wechat-content-router-windows\scripts\import_
 
 如果 `ocr_length > 0`，说明 OCR 路径已经跑通。
 
-## 七点五、验证公众号本地 PDF
+## 七点五、验证本地 PDF
 
 如果你启用：
 
@@ -300,6 +300,6 @@ python -c "import sys; print(sys.executable)"
 
 如果你现在最在意“客户本地下载看起来像页面原样”，优先先测：
 
-1. 公众号导入
+1. 小红书导入
 2. PDF 是否成功生成
 3. `preview_path` 是否指向 PDF

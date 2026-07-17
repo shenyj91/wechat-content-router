@@ -48,6 +48,9 @@ def main():
                 "enabled": True,
                 "import_root": "微信导入/小红书",
                 "asset_root": "微信导入/小红书/assets",
+                "save_pdf": args.mode == "local",
+                "prefer_pdf_preview": args.mode == "local",
+                "pdf_source": "browser_render",
             },
             "mp": {
                 "enabled": True,

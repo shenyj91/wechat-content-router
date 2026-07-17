@@ -34,6 +34,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = SCRIPT_DIR / "config.json"
 OCR_SCRIPT_PATH = SCRIPT_DIR / "ocr_paddle.py"
 OCR_CORRECTIONS_PATH = SCRIPT_DIR / "ocr_corrections.json"
+PDF_RENDER_SCRIPT_PATH = SCRIPT_DIR / "render_xhs_note_pdf.mjs"
 XHS_URL_RE = re.compile(r"https?://(?:www\.)?(?:xiaohongshu\.com|xhslink\.com)/[^\s<>\"]+")
 
 
@@ -69,17 +70,32 @@ def load_config(config_path=None):
 
 def normalize_route_config(config):
     route = ((config.get("routes") or {}).get("xhs") or {}).copy()
+    storage_mode = ((config.get("storage") or {}).get("mode") or "obsidian").lower()
     if route:
         merged = dict(config)
         merged["import_root"] = route.get("import_root", "微信导入/小红书")
         merged["asset_root"] = route.get("asset_root", "微信导入/小红书/assets")
         merged["route_enabled"] = route.get("enabled", True)
+        merged["pdf_source"] = route.get("pdf_source", "browser_render")
+        if storage_mode == "local":
+            merged["save_pdf"] = True
+            merged["prefer_pdf_preview"] = True
+        else:
+            merged["save_pdf"] = route.get("save_pdf", False)
+            merged["prefer_pdf_preview"] = route.get("prefer_pdf_preview", bool(merged["save_pdf"]))
         return merged
 
     merged = dict(config)
     merged.setdefault("import_root", "微信导入/小红书")
     merged.setdefault("asset_root", "微信导入/小红书/assets")
     merged["route_enabled"] = True
+    merged["pdf_source"] = "browser_render"
+    if storage_mode == "local":
+        merged["save_pdf"] = True
+        merged["prefer_pdf_preview"] = True
+    else:
+        merged["save_pdf"] = False
+        merged["prefer_pdf_preview"] = False
     return merged
 
 
@@ -362,6 +378,34 @@ def get_unique_note_path(folder, title):
     return candidate
 
 
+def get_unique_pdf_path(folder, title):
+    base_name = sanitize_file_name(title)
+    candidate = folder / f"{base_name}.pdf"
+    counter = 2
+    while candidate.exists():
+        candidate = folder / f"{base_name} {counter}.pdf"
+        counter += 1
+    return candidate
+
+
+def render_pdf(url, pdf_path, cookie_header=""):
+    if not PDF_RENDER_SCRIPT_PATH.exists():
+        raise FileNotFoundError(f"PDF render script not found: {PDF_RENDER_SCRIPT_PATH}")
+    node_cmd = os.environ.get("PLAYWRIGHT_NODE") or "node"
+    env = dict(os.environ)
+    if cookie_header:
+        env["XHS_COOKIE_HEADER"] = cookie_header
+    result = subprocess.run(
+        [node_cmd, str(PDF_RENDER_SCRIPT_PATH), url, str(pdf_path)],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(message or "XHS PDF render failed")
+
+
 def build_markdown(data, image_refs, settings):
     lines = []
     tags = [tag.lstrip("#") for tag in data.get("tags") or []]
@@ -512,6 +556,8 @@ def import_note(raw_input, config=None, overwrite=False):
     note_path = target_folder / f"{safe_title}.md" if overwrite else get_unique_note_path(target_folder, data["title"])
     local_image_paths = []
     image_refs = []
+    pdf_path = None
+    pdf_error = ""
 
     if settings.get("downloadImages", True):
         for index, image_url in enumerate(data["images"]):
@@ -539,13 +585,24 @@ def import_note(raw_input, config=None, overwrite=False):
     markdown = build_markdown(data, image_refs, settings)
     note_path.write_text(markdown, encoding="utf-8")
 
+    if config.get("save_pdf", False):
+        pdf_candidate = note_path.with_suffix(".pdf") if overwrite else get_unique_pdf_path(target_folder, data["title"])
+        try:
+            render_pdf(data.get("finalUrl") or data.get("sourceUrl") or source_url, pdf_candidate, load_xhs_cookie_header())
+            pdf_path = pdf_candidate
+        except Exception as error:
+            pdf_error = str(error)
+
     return {
         "note_path": str(note_path),
+        "pdf_path": str(pdf_path) if pdf_path else "",
+        "preview_path": str(pdf_path) if (pdf_path and config.get("prefer_pdf_preview", True)) else str(note_path),
         "title": data["title"],
         "source_url": data["sourceUrl"],
         "images_downloaded": len(local_image_paths),
         "ocr_length": len(data.get("ocrText") or ""),
         "config_path": config["_config_path"],
+        "pdf_error": pdf_error,
     }
 
 
