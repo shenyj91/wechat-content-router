@@ -1,4 +1,0 @@
-interface:
-  display_name: "微信内容路由"
-  short_description: "把微信里转来的小红书/公众号链接自动识别并落到 Obsidian"
-  default_prompt: "Use $wechat-content-router to import recent WeChat filehelper links into my Obsidian vault and tell me the output paths."
