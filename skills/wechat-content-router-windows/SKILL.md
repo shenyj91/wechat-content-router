@@ -50,10 +50,22 @@ description: >
 python3 scripts/use_router.py
 ```
 
+Windows 也可以直接双击：
+
+```text
+START-HERE.bat
+```
+
 它会先检查有没有 `config.json`：
 
 - 没有：先进入首次配置向导
 - 已有：直接进入使用菜单
+
+说明一下：
+
+- 当前 skill 安装机制本身没有“安装后立刻自动执行脚本”的钩子
+- 所以最接近“安装后自动进配置”的做法，就是**首次启动时自动进入配置向导**
+- Windows 用户可以直接双击 `START-HERE.bat`
 
 首次配置时会依次问：
 

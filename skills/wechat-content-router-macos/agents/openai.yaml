@@ -1,4 +1,4 @@
 interface:
   display_name: "微信内容路由（macOS）"
   short_description: "把微信里转来的小红书/公众号链接自动识别并落到 Obsidian 或本地文件夹（macOS OCR 版）"
-  default_prompt: "Use $wechat-content-router-macos to import recent WeChat filehelper links into my Obsidian vault or local folder on macOS."
+  default_prompt: "Use $wechat-content-router-macos to start guided setup on first use, then import WeChat filehelper links or pasted links into my Obsidian vault or local folder on macOS."
