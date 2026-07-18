@@ -6,7 +6,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from init_local_config import collect_windows_wechat_diagnostics, detect_windows_wechat_paths
+from init_local_config import (
+    collect_windows_wechat_diagnostics,
+    detect_windows_wechat_accounts,
+    detect_windows_wechat_paths,
+)
 
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
@@ -21,8 +25,62 @@ def save_config(config):
     CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def get_bound_account_label(wechat: dict) -> str:
+    return (
+        wechat.get("selected_account_label")
+        or wechat.get("selected_account_wxid")
+        or "当前绑定微信账号"
+    )
+
+
+def align_selected_wechat_account(wechat: dict) -> bool:
+    changed = False
+    accounts = detect_windows_wechat_accounts()
+    if not accounts:
+        return False
+
+    selected_db_dir = (wechat.get("db_dir") or "").strip().lower()
+    selected_wxid = (wechat.get("selected_account_wxid") or "").strip().lower()
+    selected_label = (wechat.get("selected_account_label") or "").strip().lower()
+
+    selected = None
+    for account in accounts:
+        account_db_dir = str(account.get("db_dir") or "").strip().lower()
+        account_wxid = str(account.get("wxid") or "").strip().lower()
+        account_label = str(account.get("label") or "").strip().lower()
+        if selected_db_dir and account_db_dir == selected_db_dir:
+            selected = account
+            break
+        if selected_wxid and account_wxid == selected_wxid:
+            selected = account
+            break
+        if selected_label and account_label == selected_label:
+            selected = account
+            break
+
+    if not selected:
+        if selected_wxid or selected_db_dir or selected_label:
+            return False
+        selected = accounts[0]
+
+    for field, key in (
+        ("db_dir", "db_dir"),
+        ("session_db", "session_db"),
+        ("message_dir", "message_dir"),
+        ("selected_account_wxid", "wxid"),
+        ("selected_account_label", "label"),
+    ):
+        value = str(selected.get(key) or "")
+        if value and wechat.get(field) != value:
+            wechat[field] = value
+            changed = True
+    return changed
+
+
 def merge_detected_wechat_paths(wechat: dict) -> bool:
     changed = False
+    if align_selected_wechat_account(wechat):
+        changed = True
     detected = detect_windows_wechat_paths()
     for key, value in detected.items():
         if value and not wechat.get(key):
@@ -114,10 +172,14 @@ def sync_decrypt_tool_config(wechat: dict) -> str:
         "keys_file": existing.get("keys_file") or "all_keys.json",
         "decrypted_dir": existing.get("decrypted_dir") or "decrypted",
         "decoded_image_dir": existing.get("decoded_image_dir") or "decoded_images",
+        "selected_account_wxid": wechat.get("selected_account_wxid") or "",
+        "selected_account_label": wechat.get("selected_account_label") or "",
     }
     merged.update(existing)
     merged["db_dir"] = db_dir
     merged["wechat_process"] = wechat.get("wechat_process") or merged.get("wechat_process") or "Weixin.exe"
+    merged["selected_account_wxid"] = wechat.get("selected_account_wxid") or merged.get("selected_account_wxid") or ""
+    merged["selected_account_label"] = wechat.get("selected_account_label") or merged.get("selected_account_label") or ""
 
     config_path.write_text(json.dumps(merged, ensure_ascii=False, indent=4), encoding="utf-8")
     return str(config_path)
@@ -143,7 +205,7 @@ def validate_import_ready(wechat: dict) -> tuple[bool, str]:
     return True, ""
 
 
-def build_failure_hints(decrypt_step, diagnostics: dict) -> list[str]:
+def build_failure_hints(decrypt_step, diagnostics: dict, wechat: dict) -> list[str]:
     hints: list[str] = []
     stderr = ""
     stdout = ""
@@ -151,13 +213,14 @@ def build_failure_hints(decrypt_step, diagnostics: dict) -> list[str]:
         stderr = decrypt_step.get("stderr") or ""
         stdout = decrypt_step.get("stdout") or ""
     combined = f"{stderr}\n{stdout}"
+    account_label = get_bound_account_label(wechat)
 
     if diagnostics.get("db_dir_hits") and not diagnostics.get("tool_exe_hits") and not diagnostics.get("tool_dir_hits"):
-        hints.append("已找到 xwechat 的 db_storage，但本机没找到可用的 WeChatDecrypt 工具。")
+        hints.append(f"已找到 {account_label} 的 xwechat 数据目录，但本机没找到可用的 WeChatDecrypt 工具。")
     if "0 candidate keys" in combined or "未能提取到任何密钥" in combined:
-        hints.append("已定位到微信 4.1+ 数据目录，但当前提 key 失败，疑似命中 4.1 新口令/密钥派生问题。")
+        hints.append(f"已定位到 {account_label} 的微信 4.1+ 数据目录，但当前提 key 失败，疑似命中 4.1 新口令/密钥派生问题。")
     if "db_dir" in combined and "未配置" in combined:
-        hints.append("解密工具没有吃到正确的 db_dir，我会优先检查工具目录里的 config.json 是否成功回填。")
+        hints.append(f"解密工具没有吃到 {account_label} 的正确数据目录，我会优先检查工具目录里的 config.json 是否成功回填。")
     if not diagnostics.get("db_dir_hits"):
         hints.append("当前机器上还没找到 xwechat_files/<账号>/db_storage。可先在微信设置→文件管理里确认数据目录。")
     return hints
@@ -186,10 +249,14 @@ def main():
             diagnostics = collect_windows_wechat_diagnostics()
             print(json.dumps({
                 "status": "decrypt_failed",
+                "bound_account": {
+                    "wxid": wechat.get("selected_account_wxid") or "",
+                    "label": wechat.get("selected_account_label") or "",
+                },
                 "decrypt": decrypt_step,
                 "decrypt_tool_config": decrypt_tool_config,
                 "diagnostics": diagnostics,
-                "hints": build_failure_hints(decrypt_step, diagnostics),
+                "hints": build_failure_hints(decrypt_step, diagnostics, wechat),
             }, ensure_ascii=False, indent=2))
             sys.exit(1)
         if merge_detected_wechat_paths(wechat):
@@ -206,10 +273,14 @@ def main():
         print(json.dumps({
             "status": "wechat_prepare_failed",
             "reason": reason,
+            "bound_account": {
+                "wxid": wechat.get("selected_account_wxid") or "",
+                "label": wechat.get("selected_account_label") or "",
+            },
             "hint": "程序没能自动准备好微信数据环境，请联系维护者处理这台 Windows 的微信定位/解密适配。",
             "diagnostics": diagnostics,
             "decrypt_tool_config": decrypt_tool_config,
-            "hints": build_failure_hints(decrypt_step, diagnostics),
+            "hints": build_failure_hints(decrypt_step, diagnostics, wechat),
         }, ensure_ascii=False, indent=2))
         sys.exit(1)
 
@@ -230,6 +301,10 @@ def main():
 
     print(json.dumps({
         "status": "ok",
+        "bound_account": {
+            "wxid": wechat.get("selected_account_wxid") or "",
+            "label": wechat.get("selected_account_label") or "",
+        },
         "decrypt_tool_config": decrypt_tool_config,
         "decrypt": decrypt_step,
         "import": import_result,

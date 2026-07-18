@@ -73,12 +73,15 @@ def run_wechat_once():
 def print_summary(config: dict):
     storage = config.get("storage") or {}
     workflow = config.get("workflow") or {}
+    wechat = config.get("wechat") or {}
     target = storage.get("local_root") if storage.get("mode") == "local" else config.get("vault_root")
+    account_text = wechat.get("selected_account_label") or wechat.get("selected_account_wxid") or "未绑定"
     print("\n当前配置")
     print(f"- 保存模式：{storage.get('mode')}")
     print(f"- 目标路径：{target}")
     print(f"- 默认使用方式：{workflow.get('default_action', 'manual_link')}")
-    print(f"- 微信自动扫描：{'开启' if (config.get('wechat') or {}).get('enabled') else '关闭'}")
+    print(f"- 微信自动扫描：{'开启' if wechat.get('enabled') else '关闭'}")
+    print(f"- 当前绑定微信：{account_text}")
 
 
 def main():
