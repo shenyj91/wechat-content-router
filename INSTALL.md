@@ -144,6 +144,28 @@ python scripts/init_local_config.py --help
 
 ## 五、初始化配置
 
+### 最推荐：直接跑首次配置向导
+
+```bash
+python3 skills/wechat-content-router-macos/scripts/init_local_config.py
+```
+
+或 Windows：
+
+```bash
+python skills/wechat-content-router-windows/scripts/init_local_config.py
+```
+
+它会直接问你：
+
+- 保存到本地还是 Obsidian
+- 路径是什么
+- 要不要开 OCR
+- 手动贴链接还是自动扫微信
+- 要不要间隔扫描
+
+### 仍然支持命令行方式
+
 ### 方案 1：导入 Obsidian
 
 ```bash
@@ -211,7 +233,7 @@ python3 ~/.codex/skills/wechat-content-router-macos/scripts/init_local_config.py
 你可以直接跑：
 
 ```bash
-python3 ~/.codex/skills/wechat-content-router-macos/scripts/init_local_config.py --help
+python3 ~/.codex/skills/wechat-content-router-macos/scripts/use_router.py
 ```
 
 或者在 Codex 里说：
@@ -228,12 +250,12 @@ python3 ~/.codex/skills/wechat-content-router-macos/scripts/init_local_config.py
 
 ```bash
 cd skills/wechat-content-router-macos
-python3 scripts/init_local_config.py --help
+python3 scripts/use_router.py
 ```
 
 ### Windows
 
 ```bash
 cd skills/wechat-content-router-windows
-python scripts/init_local_config.py --help
+python scripts/use_router.py
 ```

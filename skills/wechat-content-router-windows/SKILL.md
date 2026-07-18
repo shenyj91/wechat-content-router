@@ -42,9 +42,44 @@ description: >
 - 平台：**Windows**
 - OCR：**已接入（PaddleOCR，建议先本机验证）**
 
+## 首次使用建议
+
+先直接运行：
+
+```bash
+python3 scripts/use_router.py
+```
+
+它会先检查有没有 `config.json`：
+
+- 没有：先进入首次配置向导
+- 已有：直接进入使用菜单
+
+首次配置时会依次问：
+
+- 保存到本地还是 Obsidian
+- 如果是 Obsidian，vault 路径是什么
+- 如果是本地，保存目录是什么
+- 要不要开 OCR
+- 平时更想手动贴链接，还是自动扫描微信
+- 如果开微信扫描，要扫哪个会话、按什么频率跑
+
 ## 工作流
 
-### 模式 A：直接导入单条内容
+### 模式 A：菜单式使用（推荐）
+
+```bash
+python3 scripts/use_router.py
+```
+
+进入后可选：
+
+1. 手动粘贴一条链接/分享文案导入
+2. 跑一次微信自动扫描
+3. 按当前配置持续扫描微信
+4. 重新配置
+
+### 模式 B：直接导入单条内容
 
 #### 小红书
 
@@ -58,7 +93,7 @@ python3 scripts/import_xhs_note.py "<小红书链接或整段分享文案>"
 python3 scripts/import_wechat_mp_article.py "<公众号文章链接>"
 ```
 
-### 模式 B：走微信自动路由
+### 模式 C：走微信自动路由
 
 先初始化配置：
 

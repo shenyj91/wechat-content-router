@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = SCRIPT_DIR / "config.json"
+XHS_URL_RE = re.compile(r"https?://(?:www\.)?(?:xiaohongshu\.com|xhslink\.com)/[^\s<>\"]+")
+MP_URL_RE = re.compile(r"https?://mp\.weixin\.qq\.com/[^\s<>\"]+")
+FEISHU_URL_RE = re.compile(r"https?://(?:[\w-]+\.)?feishu\.cn/(?:wiki|docx)/[^\s<>\"]+")
+
+
+def load_importer(module_name: str, script_path: Path):
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def ensure_config():
+    if CONFIG_PATH.exists():
+        return
+    print("还没有配置文件，先进入首次配置向导。")
+    subprocess.run([sys.executable, str(SCRIPT_DIR / "init_local_config.py")], check=True)
+
+
+def load_config():
+    ensure_config()
+    return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+
+
+def detect_type(raw_text: str) -> str:
+    for route_type, pattern in (("xhs", XHS_URL_RE), ("mp", MP_URL_RE), ("feishu", FEISHU_URL_RE)):
+        if pattern.search(raw_text or ""):
+            return route_type
+    return ""
+
+
+def import_manual(raw_text: str):
+    route_type = detect_type(raw_text)
+    if not route_type:
+        raise RuntimeError("没识别出支持的链接类型，目前支持：小红书 / 公众号 / 飞书。")
+    if route_type == "xhs":
+        importer = load_importer("router_xhs", SCRIPT_DIR / "import_xhs_note.py")
+        return {"type": route_type, "result": importer.import_note(raw_text)}
+    if route_type == "mp":
+        importer = load_importer("router_mp", SCRIPT_DIR / "import_wechat_mp_article.py")
+        return {"type": route_type, "result": importer.import_article(raw_text)}
+    importer = load_importer("router_feishu", SCRIPT_DIR / "import_feishu_page.py")
+    return {"type": route_type, "result": importer.import_page(raw_text)}
+
+
+def run_wechat_once():
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_DIR / "run_wechat_router_pipeline.py")],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout or "").strip() or "微信扫描失败")
+    return json.loads(result.stdout)
+
+
+def print_summary(config: dict):
+    storage = config.get("storage") or {}
+    workflow = config.get("workflow") or {}
+    target = storage.get("local_root") if storage.get("mode") == "local" else config.get("vault_root")
+    print("\n当前配置")
+    print(f"- 保存模式：{storage.get('mode')}")
+    print(f"- 目标路径：{target}")
+    print(f"- 默认使用方式：{workflow.get('default_action', 'manual_link')}")
+    print(f"- 微信自动扫描：{'开启' if (config.get('wechat') or {}).get('enabled') else '关闭'}")
+
+
+def main():
+    config = load_config()
+    print_summary(config)
+
+    while True:
+        print("\n请选择要做什么：")
+        print("1. 手动粘贴一条链接/分享文案进行导入")
+        print("2. 运行一次微信自动扫描")
+        print("3. 按当前配置持续扫描微信")
+        print("4. 重新配置")
+        print("0. 退出")
+        choice = input("请输入序号：").strip()
+
+        if choice == "0":
+            return
+        if choice == "4":
+            subprocess.run([sys.executable, str(SCRIPT_DIR / "init_local_config.py")], check=True)
+            config = load_config()
+            print_summary(config)
+            continue
+        if choice == "1":
+            raw_text = input("\n请粘贴小红书分享文案 / 公众号链接 / 飞书链接：\n").strip()
+            if not raw_text:
+                print("你还没粘内容。")
+                continue
+            result = import_manual(raw_text)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            continue
+        if choice == "2":
+            print(json.dumps(run_wechat_once(), ensure_ascii=False, indent=2))
+            continue
+        if choice == "3":
+            wechat = config.get("wechat") or {}
+            if not wechat.get("enabled"):
+                print("当前还没启用微信自动扫描，请先重新配置。")
+                continue
+            workflow = config.get("workflow") or {}
+            mode = workflow.get("monitor_mode") or "manual"
+            interval_seconds = int(workflow.get("interval_seconds") or 900)
+            if mode == "manual":
+                print("当前配置是“只跑一次”，现在执行一次。")
+                print(json.dumps(run_wechat_once(), ensure_ascii=False, indent=2))
+                continue
+            if mode == "realtime":
+                interval_seconds = 15
+            print(f"开始持续扫描。轮询间隔：{interval_seconds} 秒。按 Ctrl+C 停止。")
+            try:
+                while True:
+                    print(json.dumps(run_wechat_once(), ensure_ascii=False, indent=2))
+                    time.sleep(interval_seconds)
+            except KeyboardInterrupt:
+                print("\n已停止持续扫描。")
+            continue
+        print("输入不对，请重新选。")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        sys.exit(1)
