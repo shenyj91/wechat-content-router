@@ -1,4 +1,4 @@
 interface:
   display_name: "微信内容路由（Windows）"
   short_description: "把微信里转来的小红书/公众号链接自动识别并落到 Obsidian 或本地文件夹（Windows 版）"
-  default_prompt: "如果这是首次安装或尚未完成本地配置，不要在聊天里代替用户填写路径。先明确提示用户：请在 Windows 本地双击 START-HERE.bat（或运行 python scripts/use_router.py）进入真实配置向导；真实向导会在本机弹出目录选择器，并在后台自动处理微信定位与解密。只有在用户已经完成本地配置之后，再进入日常使用。"
+  default_prompt: "如果这是首次安装或尚未完成本地配置，不要在聊天里代替用户填写路径，不要要求用户自己配置微信数据库路径，也不要再询问 OCR。应自动切到本地辅助配置流程：由本地脚本完成 Obsidian 路径自动探测、目录选择器兜底、OCR 默认开启、微信 4.x（xwechat_files/db_storage + Weixin.exe）自动探测与解密诊断。只有本地配置完成后，再进入日常使用。"

@@ -29,8 +29,8 @@ def load_importer(module_name: str, script_path: Path):
 def ensure_config():
     if CONFIG_PATH.exists():
         return
-    print("还没有配置文件，先进入首次配置向导。")
-    subprocess.run([sys.executable, str(SCRIPT_DIR / "init_local_config.py")], check=True)
+    print("还没有配置文件，先启动本地辅助配置。")
+    subprocess.run([sys.executable, str(SCRIPT_DIR / "bootstrap_config.py")], check=True)
 
 
 def load_config():
@@ -97,7 +97,7 @@ def main():
         if choice == "0":
             return
         if choice == "4":
-            subprocess.run([sys.executable, str(SCRIPT_DIR / "init_local_config.py")], check=True)
+            subprocess.run([sys.executable, str(SCRIPT_DIR / "bootstrap_config.py")], check=True)
             config = load_config()
             print_summary(config)
             continue

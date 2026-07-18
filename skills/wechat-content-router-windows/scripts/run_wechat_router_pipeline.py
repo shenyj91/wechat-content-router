@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -93,6 +94,35 @@ def build_decrypt_command(wechat: dict):
     return None, ""
 
 
+def sync_decrypt_tool_config(wechat: dict) -> str:
+    decrypt_workdir = wechat.get("decrypt_workdir") or ""
+    db_dir = wechat.get("db_dir") or ""
+    if not decrypt_workdir or not db_dir:
+        return ""
+
+    config_path = Path(decrypt_workdir).expanduser().resolve() / "config.json"
+    existing = {}
+    if config_path.exists():
+        try:
+            existing = json.loads(config_path.read_text(encoding="utf-8"))
+        except Exception:
+            existing = {}
+
+    merged = {
+        "db_dir": db_dir,
+        "wechat_process": wechat.get("wechat_process") or "Weixin.exe",
+        "keys_file": existing.get("keys_file") or "all_keys.json",
+        "decrypted_dir": existing.get("decrypted_dir") or "decrypted",
+        "decoded_image_dir": existing.get("decoded_image_dir") or "decoded_images",
+    }
+    merged.update(existing)
+    merged["db_dir"] = db_dir
+    merged["wechat_process"] = wechat.get("wechat_process") or merged.get("wechat_process") or "Weixin.exe"
+
+    config_path.write_text(json.dumps(merged, ensure_ascii=False, indent=4), encoding="utf-8")
+    return str(config_path)
+
+
 def run_step(command, workdir):
     result = subprocess.run(command, cwd=workdir, capture_output=True, text=True)
     return {
@@ -113,6 +143,26 @@ def validate_import_ready(wechat: dict) -> tuple[bool, str]:
     return True, ""
 
 
+def build_failure_hints(decrypt_step, diagnostics: dict) -> list[str]:
+    hints: list[str] = []
+    stderr = ""
+    stdout = ""
+    if decrypt_step:
+        stderr = decrypt_step.get("stderr") or ""
+        stdout = decrypt_step.get("stdout") or ""
+    combined = f"{stderr}\n{stdout}"
+
+    if diagnostics.get("db_dir_hits") and not diagnostics.get("tool_exe_hits") and not diagnostics.get("tool_dir_hits"):
+        hints.append("已找到 xwechat 的 db_storage，但本机没找到可用的 WeChatDecrypt 工具。")
+    if "0 candidate keys" in combined or "未能提取到任何密钥" in combined:
+        hints.append("已定位到微信 4.1+ 数据目录，但当前提 key 失败，疑似命中 4.1 新口令/密钥派生问题。")
+    if "db_dir" in combined and "未配置" in combined:
+        hints.append("解密工具没有吃到正确的 db_dir，我会优先检查工具目录里的 config.json 是否成功回填。")
+    if not diagnostics.get("db_dir_hits"):
+        hints.append("当前机器上还没找到 xwechat_files/<账号>/db_storage。可先在微信设置→文件管理里确认数据目录。")
+    return hints
+
+
 def main():
     config = load_config()
     wechat = config.get("wechat") or {}
@@ -126,11 +176,21 @@ def main():
 
     decrypt_step = None
     decrypt_cmd, decrypt_workdir = build_decrypt_command(wechat)
+    decrypt_tool_config = sync_decrypt_tool_config(wechat)
+    if decrypt_tool_config:
+        config_changed = True
 
     if decrypt_cmd and decrypt_workdir:
         decrypt_step = run_step(decrypt_cmd, decrypt_workdir)
         if decrypt_step["returncode"] != 0:
-            print(json.dumps({"status": "decrypt_failed", "decrypt": decrypt_step}, ensure_ascii=False, indent=2))
+            diagnostics = collect_windows_wechat_diagnostics()
+            print(json.dumps({
+                "status": "decrypt_failed",
+                "decrypt": decrypt_step,
+                "decrypt_tool_config": decrypt_tool_config,
+                "diagnostics": diagnostics,
+                "hints": build_failure_hints(decrypt_step, diagnostics),
+            }, ensure_ascii=False, indent=2))
             sys.exit(1)
         if merge_detected_wechat_paths(wechat):
             config_changed = True
@@ -148,6 +208,8 @@ def main():
             "reason": reason,
             "hint": "程序没能自动准备好微信数据环境，请联系维护者处理这台 Windows 的微信定位/解密适配。",
             "diagnostics": diagnostics,
+            "decrypt_tool_config": decrypt_tool_config,
+            "hints": build_failure_hints(decrypt_step, diagnostics),
         }, ensure_ascii=False, indent=2))
         sys.exit(1)
 
@@ -168,6 +230,7 @@ def main():
 
     print(json.dumps({
         "status": "ok",
+        "decrypt_tool_config": decrypt_tool_config,
         "decrypt": decrypt_step,
         "import": import_result,
     }, ensure_ascii=False, indent=2))

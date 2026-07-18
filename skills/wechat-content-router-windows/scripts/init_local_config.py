@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
+import re
 from pathlib import Path
 
 
@@ -105,8 +107,61 @@ def prompt_text(title: str, default: str = "", allow_empty: bool = False) -> str
         print("这个值不能为空。")
 
 
+def iter_windows_drive_roots() -> list[Path]:
+    roots: list[Path] = []
+    for letter in "CDEFGHIJKLMNOPQRSTUVWXYZ":
+        drive = Path(f"{letter}:/")
+        if drive.exists():
+            roots.append(drive)
+    return roots
+
+
+def detect_obsidian_vaults() -> list[str]:
+    candidates: list[Path] = []
+    home = Path.home()
+
+    for root in [home, home / "Documents", home / "Desktop", *iter_windows_drive_roots()]:
+        if not root.exists():
+            continue
+        try:
+            if (root / ".obsidian").is_dir():
+                candidates.append(root)
+            for child in root.iterdir():
+                if not child.is_dir():
+                    continue
+                if (child / ".obsidian").is_dir():
+                    candidates.append(child)
+        except Exception:
+            continue
+
+    unique: list[str] = []
+    seen = set()
+    for path in candidates:
+        resolved = str(path.resolve())
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(resolved)
+    return unique
+
+
+def prompt_obsidian_vault_path() -> str:
+    detected = detect_obsidian_vaults()
+    if detected:
+        print("\n已自动识别到这些 Obsidian 库：")
+        options: list[tuple[str, str]] = []
+        for idx, path in enumerate(detected[:8], start=1):
+            options.append((path, f"{path}（自动识别）"))
+        options.append(("__browse__", "选择其他文件夹"))
+        choice = prompt_choice("请选择要使用的 Obsidian vault", options, default_key=detected[0])
+        if choice != "__browse__":
+            return choice
+    return prompt_path("请选择 Obsidian vault 路径", kind="dir")
+
+
 def detect_windows_wechat_paths() -> dict[str, str]:
     result = {
+        "db_dir": "",
+        "wechat_process": "Weixin.exe",
         "session_db": "",
         "message_dir": "",
         "decrypt_workdir": "",
@@ -165,6 +220,58 @@ def detect_windows_wechat_paths() -> dict[str, str]:
         if message_candidate.exists():
             result["message_dir"] = str(message_candidate.resolve())
 
+    db_dir_candidates: list[Path] = []
+    appdata = os.environ.get("APPDATA", "")
+    if appdata:
+        config_dir = Path(appdata) / "Tencent" / "xwechat" / "config"
+        if config_dir.exists():
+            for ini_file in sorted(config_dir.glob("*.ini")):
+                content = None
+                for enc in ("utf-8", "gbk", "utf-16"):
+                    try:
+                        content = ini_file.read_text(encoding=enc, errors="ignore")
+                        if content:
+                            break
+                    except Exception:
+                        continue
+                if not content:
+                    continue
+                for match in re.findall(r"[A-Za-z]:\\\\[^\\r\\n\\t\"']+", content):
+                    raw_path = Path(match)
+                    candidates = []
+                    if raw_path.name.lower() == "db_storage":
+                        candidates.append(raw_path)
+                    candidates.append(raw_path / "xwechat_files")
+                    candidates.append(raw_path)
+                    for candidate in candidates:
+                        if candidate.exists():
+                            if candidate.name.lower() == "db_storage":
+                                db_dir_candidates.append(candidate)
+                            else:
+                                for db_dir in candidate.glob("*/db_storage"):
+                                    db_dir_candidates.append(db_dir)
+
+    for root in (
+        home / "Documents" / "xwechat_files",
+        home / "xwechat_files",
+        home / "Documents" / "xwechat_files".lower(),
+    ):
+        if root.exists():
+            for db_dir in root.glob("*/db_storage"):
+                db_dir_candidates.append(db_dir)
+
+    unique_db_dirs = []
+    seen = set()
+    for candidate in db_dir_candidates:
+        resolved = str(candidate.resolve())
+        if resolved not in seen and candidate.exists():
+            seen.add(resolved)
+            unique_db_dirs.append(candidate.resolve())
+
+    if unique_db_dirs:
+        unique_db_dirs.sort(key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+        result["db_dir"] = str(unique_db_dirs[0])
+
     python_candidate = Path.home() / "AppData" / "Local" / "Programs" / "Python"
     if python_candidate.exists():
         pythons = sorted(python_candidate.glob("Python*/python.exe"))
@@ -190,16 +297,20 @@ def detect_windows_wechat_paths() -> dict[str, str]:
 def collect_windows_wechat_diagnostics() -> dict:
     home = Path.home()
     tool_search_roots = [home / "Downloads", home / "Desktop", home / "Documents"]
-    data_roots = [home / "Documents" / "WeChat Files", home / "文档" / "WeChat Files"]
+    data_roots = [
+        home / "Documents" / "xwechat_files",
+        home / "xwechat_files",
+        home / "文档" / "xwechat_files",
+    ]
 
     existing_tool_roots = [str(p.resolve()) for p in tool_search_roots if p.exists()]
     existing_data_roots = [str(p.resolve()) for p in data_roots if p.exists()]
+    ini_files: list[str] = []
 
     tool_dir_hits: list[str] = []
     tool_exe_hits: list[str] = []
     wxid_dirs: list[str] = []
-    raw_session_candidates: list[str] = []
-    raw_msg_dirs: list[str] = []
+    db_dir_hits: list[str] = []
     python_hits: list[str] = []
 
     for base in tool_search_roots:
@@ -224,19 +335,19 @@ def collect_windows_wechat_diagnostics() -> dict:
     for root in data_roots:
         if not root.exists():
             continue
-        for wxid_dir in sorted(root.glob("wxid_*"))[:20]:
+        for wxid_dir in sorted(root.iterdir())[:20]:
+            if not wxid_dir.is_dir():
+                continue
             wxid_dirs.append(str(wxid_dir.resolve()))
-            for db in wxid_dir.rglob("session.db"):
-                raw_session_candidates.append(str(db.resolve()))
-                if len(raw_session_candidates) >= 20:
-                    break
-            for msg_dir in wxid_dir.rglob("Msg"):
-                if msg_dir.is_dir():
-                    raw_msg_dirs.append(str(msg_dir.resolve()))
-                    if len(raw_msg_dirs) >= 20:
-                        break
-            if len(raw_session_candidates) >= 20 and len(raw_msg_dirs) >= 20:
-                break
+            db_storage = wxid_dir / "db_storage"
+            if db_storage.exists():
+                db_dir_hits.append(str(db_storage.resolve()))
+
+    appdata = os.environ.get("APPDATA", "")
+    if appdata:
+        config_dir = Path(appdata) / "Tencent" / "xwechat" / "config"
+        if config_dir.exists():
+            ini_files = [str(p.resolve()) for p in sorted(config_dir.glob("*.ini"))[:20]]
 
     python_candidate = home / "AppData" / "Local" / "Programs" / "Python"
     if python_candidate.exists():
@@ -246,19 +357,19 @@ def collect_windows_wechat_diagnostics() -> dict:
     notes: list[str] = []
     if not tool_dir_hits and not tool_exe_hits:
         notes.append("未找到 WeChatDecrypt.exe / wechat-decrypt / WeChatDump 一类解密工具。")
-    if wxid_dirs and not (detected.get("session_db") and detected.get("message_dir")):
-        notes.append("找到了微信原始数据目录，但还没有解密后的 session.db / message 产物。")
-    if not wxid_dirs:
-        notes.append("未找到 Windows 微信数据目录（Documents/WeChat Files 下无 wxid_*）。")
+    if db_dir_hits and not (detected.get("session_db") and detected.get("message_dir")):
+        notes.append("找到了 xwechat 的 db_storage，但还没有解密后的 session.db / message 产物。")
+    if not db_dir_hits:
+        notes.append("未找到 Windows 微信 4.x 的 db_storage（xwechat_files/<账号>/db_storage）。")
 
     return {
         "tool_search_roots": existing_tool_roots,
         "data_roots": existing_data_roots,
+        "ini_files": ini_files,
         "tool_dir_hits": tool_dir_hits[:20],
         "tool_exe_hits": tool_exe_hits[:20],
         "wxid_dirs": wxid_dirs[:20],
-        "raw_session_candidates": raw_session_candidates[:20],
-        "raw_msg_dirs": raw_msg_dirs[:20],
+        "db_dir_hits": db_dir_hits[:20],
         "python_hits": python_hits,
         "detected": detected,
         "notes": notes,
@@ -276,6 +387,8 @@ def build_config(
     interval_seconds: int = 900,
     wechat_enabled: bool = False,
     chat_username: str = "filehelper",
+    db_dir: str = "",
+    wechat_process: str = "Weixin.exe",
     session_db: str = "",
     message_dir: str = "",
     message_table: str = "",
@@ -333,6 +446,8 @@ def build_config(
         },
         "wechat": {
             "enabled": wechat_enabled,
+            "db_dir": db_dir,
+            "wechat_process": wechat_process,
             "session_db": session_db,
             "message_dir": message_dir,
             "chat_username": chat_username,
@@ -356,11 +471,11 @@ def interactive_config() -> dict:
     vault_root = ""
     local_root = ""
     if mode == "obsidian":
-        vault_root = prompt_path("请选择 Obsidian vault 路径", kind="dir")
+        vault_root = prompt_obsidian_vault_path()
     else:
         local_root = prompt_path("请选择本地保存目录", default="~/Documents/ImportedContent", kind="dir")
 
-    run_ocr = prompt_yes_no("要不要开启图片 OCR？", default=True)
+    run_ocr = True
 
     default_action = prompt_choice(
         "你平时更想怎么用？",
@@ -372,6 +487,8 @@ def interactive_config() -> dict:
     monitor_mode = "manual"
     interval_seconds = 900
     chat_username = "filehelper"
+    db_dir = ""
+    wechat_process = "Weixin.exe"
     session_db = ""
     message_dir = ""
     message_table = ""
@@ -408,6 +525,8 @@ def interactive_config() -> dict:
 
         session_db = detected.get("session_db", "")
         message_dir = detected.get("message_dir", "")
+        db_dir = detected.get("db_dir", "")
+        wechat_process = detected.get("wechat_process", "Weixin.exe")
         decrypt_workdir = detected.get("decrypt_workdir", "")
         decrypt_exe = detected.get("decrypt_exe", "")
         decrypt_python = detected.get("decrypt_python", "")
@@ -424,6 +543,8 @@ def interactive_config() -> dict:
         interval_seconds=interval_seconds,
         wechat_enabled=wechat_enabled,
         chat_username=chat_username,
+        db_dir=db_dir,
+        wechat_process=wechat_process,
         session_db=session_db,
         message_dir=message_dir,
         message_table=message_table,
@@ -451,6 +572,8 @@ def cli_config(args) -> dict:
         interval_seconds=args.interval_seconds,
         wechat_enabled=args.wechat_enabled,
         chat_username=args.chat_username,
+        db_dir=normalize_path(args.db_dir) if getattr(args, "db_dir", None) else "",
+        wechat_process=getattr(args, "wechat_process", None) or "Weixin.exe",
         session_db=normalize_path(args.session_db) if args.session_db else "",
         message_dir=normalize_path(args.message_dir) if args.message_dir else "",
         message_table=args.message_table or "",
@@ -490,7 +613,7 @@ def print_config_summary(config: dict) -> None:
     print("\n配置摘要")
     print(f"- 保存模式：{'本地文件夹' if storage.get('mode') == 'local' else 'Obsidian'}")
     print(f"- 目标路径：{target}")
-    print(f"- OCR：{'开启' if settings.get('runOcr', True) else '关闭'}")
+    print("- OCR：默认开启")
     print(f"- 默认使用方式：{action_text}")
     print(f"- 微信入口：{wechat_entry}")
     print(f"- 扫描方式：{monitor_text}")
@@ -511,6 +634,8 @@ def main():
     parser.add_argument("--interval-seconds", type=int, default=900)
     parser.add_argument("--wechat-enabled", action="store_true")
     parser.add_argument("--chat-username", default="filehelper")
+    parser.add_argument("--db-dir")
+    parser.add_argument("--wechat-process", default="Weixin.exe")
     parser.add_argument("--session-db")
     parser.add_argument("--message-dir")
     parser.add_argument("--message-table")
