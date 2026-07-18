@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
+
+from init_local_config import detect_windows_wechat_paths
 
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
@@ -17,6 +18,16 @@ def load_config():
 
 def save_config(config):
     CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def merge_detected_wechat_paths(wechat: dict) -> bool:
+    changed = False
+    detected = detect_windows_wechat_paths()
+    for key, value in detected.items():
+        if value and not wechat.get(key):
+            wechat[key] = value
+            changed = True
+    return changed
 
 
 def fill_wechat_paths_from_decrypt_output(wechat: dict) -> bool:
@@ -92,6 +103,16 @@ def run_step(command, workdir):
     }
 
 
+def validate_import_ready(wechat: dict) -> tuple[bool, str]:
+    session_db = wechat.get("session_db") or ""
+    message_dir = wechat.get("message_dir") or ""
+    if not session_db or not Path(session_db).exists():
+        return False, "未能自动找到可用的 session.db"
+    if not message_dir or not Path(message_dir).exists():
+        return False, "未能自动找到可用的消息数据库目录"
+    return True, ""
+
+
 def main():
     config = load_config()
     wechat = config.get("wechat") or {}
@@ -99,7 +120,9 @@ def main():
         print(json.dumps({"status": "wechat_disabled"}, ensure_ascii=False, indent=2))
         return
 
-    config_changed = fill_wechat_paths_from_decrypt_output(wechat)
+    config_changed = merge_detected_wechat_paths(wechat)
+    if fill_wechat_paths_from_decrypt_output(wechat):
+        config_changed = True
 
     decrypt_step = None
     decrypt_cmd, decrypt_workdir = build_decrypt_command(wechat)
@@ -109,11 +132,22 @@ def main():
         if decrypt_step["returncode"] != 0:
             print(json.dumps({"status": "decrypt_failed", "decrypt": decrypt_step}, ensure_ascii=False, indent=2))
             sys.exit(1)
+        if merge_detected_wechat_paths(wechat):
+            config_changed = True
         if fill_wechat_paths_from_decrypt_output(wechat):
             config_changed = True
 
     if config_changed:
         save_config(config)
+
+    ready, reason = validate_import_ready(wechat)
+    if not ready:
+        print(json.dumps({
+            "status": "wechat_prepare_failed",
+            "reason": reason,
+            "hint": "程序没能自动准备好微信数据环境，请联系维护者处理这台 Windows 的微信定位/解密适配。",
+        }, ensure_ascii=False, indent=2))
+        sys.exit(1)
 
     import_cmd = [sys.executable, str(IMPORT_SCRIPT)]
     import_step = run_step(import_cmd, str(Path(__file__).parent))
