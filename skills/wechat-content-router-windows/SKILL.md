@@ -12,6 +12,21 @@ description: >
 
 这个版本是为了把 Windows 发布入口单独拆出来，避免用户误装 macOS OCR 版。
 
+## 首次调用规则
+
+如果这是安装后的首次调用，或者当前还没有 `scripts/config.json`：
+
+1. 不要先讲大段说明
+2. 直接进入“开始配置 wechat-content-router-windows”
+3. 按顺序一步步问完：
+   - 保存到本地还是 Obsidian
+   - 路径是什么
+   - 要不要开 OCR
+   - 手动贴链接还是自动扫描微信
+   - 如果自动扫微信：固定文件传输助手，还是固定某个聊天对象
+   - 扫描频率是多少
+4. 配置完成后，再进入日常使用
+
 当前 Windows OCR 后端：
 
 - `PaddleOCR`

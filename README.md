@@ -198,6 +198,22 @@ wechat-content-router-skill/
 
 - **macOS 版**
 
+### 如果你要做成“安装完就开始一步步配置”
+
+建议安装平台在装完 skill 后，自动发起一条首轮消息：
+
+```text
+开始配置 wechat-content-router-windows
+```
+
+或：
+
+```text
+开始配置 wechat-content-router-macos
+```
+
+这样智能体就会直接进入首次配置，而不是先讲说明文档。
+
 ### 如果你现在要把它给别人装
 建议按这条规则理解：
 
