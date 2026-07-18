@@ -149,7 +149,7 @@ npx playwright install chromium
 
 - 公众号：浏览器渲染 PDF
 - 小红书：浏览器渲染 PDF
-- 飞书：预留
+- 飞书：浏览器渲染 PDF
 
 如果你不需要 OCR，也可以先不装 PaddleOCR，只把配置里的：
 
@@ -303,3 +303,9 @@ python -c "import sys; print(sys.executable)"
 1. 小红书导入
 2. PDF 是否成功生成
 3. `preview_path` 是否指向 PDF
+
+如果飞书页面已经能在本机浏览器稳定打开，也可以直接测：
+
+```bash
+python .\scripts\import_feishu_page.py "飞书页面链接"
+```

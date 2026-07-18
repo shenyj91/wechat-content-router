@@ -16,6 +16,7 @@ import zstandard as zstd
 DEFAULT_CONFIG_PATH = Path(__file__).with_name("config.json")
 XHS_URL_RE = re.compile(r"https?://(?:www\.)?(?:xiaohongshu\.com|xhslink\.com)/[^\s<>\"]+")
 MP_URL_RE = re.compile(r"https?://mp\.weixin\.qq\.com/[^\s<>\"]+")
+FEISHU_URL_RE = re.compile(r"https?://(?:[\w-]+\.)?feishu\.cn/(?:wiki|docx)/[^\s<>\"]+")
 
 
 def load_json(path: Path, default):
@@ -57,7 +58,7 @@ def decompress_content(content, ct):
 
 
 def detect_message_type(text: str) -> tuple[str, str]:
-    for link_type, pattern in (("xhs", XHS_URL_RE), ("mp", MP_URL_RE)):
+    for link_type, pattern in (("xhs", XHS_URL_RE), ("mp", MP_URL_RE), ("feishu", FEISHU_URL_RE)):
         match = pattern.search(text or "")
         if match:
             return link_type, match.group(0).replace("&amp;", "&")
@@ -152,6 +153,7 @@ def main():
     recent_messages = collect_recent_messages(config)
     xhs_importer = load_importer("wechat_router_xhs", Path(__file__).with_name("import_xhs_note.py"))
     mp_importer = load_importer("wechat_router_mp", Path(__file__).with_name("import_wechat_mp_article.py"))
+    feishu_importer = load_importer("wechat_router_feishu", Path(__file__).with_name("import_feishu_page.py"))
 
     imports = []
     for item in recent_messages:
@@ -163,6 +165,8 @@ def main():
             result = xhs_importer.import_note(item["raw_text"], config=config, overwrite=True)
         elif item["type"] == "mp":
             result = mp_importer.import_article(item["url"], config=config, overwrite=True)
+        elif item["type"] == "feishu":
+            result = feishu_importer.import_page(item["url"], config=config, overwrite=True)
         else:
             continue
 

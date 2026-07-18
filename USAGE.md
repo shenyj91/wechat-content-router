@@ -89,6 +89,23 @@ python3 scripts/import_wechat_mp_article.py "公众号文章链接"
 
 - 当 `storage.mode=local` 时，公众号路由现在会默认强制按这套规则输出
 
+### 飞书
+
+#### Codex 安装方式（macOS）
+
+```bash
+python3 ~/.codex/skills/wechat-content-router-macos/scripts/import_feishu_page.py "飞书页面链接"
+```
+
+#### 普通本地目录方式
+
+```bash
+cd skills/wechat-content-router-macos
+python3 scripts/import_feishu_page.py "飞书页面链接"
+```
+
+如果走本地模式，飞书导入也会优先输出浏览器渲染后的 PDF。
+
 ---
 
 ## 三、微信自动模式怎么用
@@ -152,11 +169,11 @@ python3 scripts/run_wechat_router_pipeline.py
 
 - 公众号：是
 - 小红书：是
-- 飞书：预留
+- 飞书：是
 
 所以现在最稳的理解是：
 
-- **本地模式下的 PDF-first，当前已经真正落地在公众号和小红书路由**
+- **本地模式下的 PDF-first，当前已经真正落地在公众号、小红书、飞书路由**
 
 ---
 

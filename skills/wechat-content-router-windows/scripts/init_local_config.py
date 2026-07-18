@@ -60,10 +60,10 @@ def main():
                 "pdf_source": "browser_render",
             },
             "feishu": {
-                "enabled": False,
+                "enabled": True,
                 "import_root": "微信导入/飞书",
-                "save_pdf": True,
-                "prefer_pdf_preview": True,
+                "save_pdf": args.mode == "local",
+                "prefer_pdf_preview": args.mode == "local",
                 "pdf_source": "browser_render",
             },
         },

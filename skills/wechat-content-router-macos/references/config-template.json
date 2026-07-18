@@ -32,10 +32,10 @@
       "pdf_source": "browser_render"
     },
     "feishu": {
-      "enabled": false,
+      "enabled": true,
       "import_root": "微信导入/飞书",
-      "save_pdf": true,
-      "prefer_pdf_preview": true,
+      "save_pdf": false,
+      "prefer_pdf_preview": false,
       "pdf_source": "browser_render"
     }
   },
