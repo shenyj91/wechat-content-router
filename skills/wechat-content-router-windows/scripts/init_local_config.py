@@ -107,44 +107,88 @@ def detect_windows_wechat_paths() -> dict[str, str]:
         "session_db": "",
         "message_dir": "",
         "decrypt_workdir": "",
+        "decrypt_exe": "",
         "decrypt_python": "",
         "decrypt_script": "",
     }
 
     home = Path.home()
-    candidates = []
-    docs = home / "Documents" / "WeChat Files"
-    if docs.exists():
-        candidates.append(docs)
-    docs_cn = home / "文档" / "WeChat Files"
-    if docs_cn.exists():
-        candidates.append(docs_cn)
+    search_roots = [home / "Downloads", home / "Desktop", home / "Documents"]
 
-    wxid_dirs: list[Path] = []
-    for base in candidates:
-        wxid_dirs.extend(sorted(base.glob("wxid_*")))
-
-    for wxid_dir in wxid_dirs:
-        for db in wxid_dir.rglob("session.db"):
-            result["session_db"] = str(db.resolve())
-            break
-        if result["session_db"]:
+    for base in search_roots:
+        if not base.exists():
+            continue
+        direct_exe = base / "WeChatDecrypt.exe"
+        if direct_exe.exists():
+            result["decrypt_exe"] = str(direct_exe.resolve())
+            result["decrypt_workdir"] = str(direct_exe.resolve().parent)
             break
 
-    for wxid_dir in wxid_dirs:
-        msg_dirs = [p for p in wxid_dir.rglob("Msg") if p.is_dir()]
-        if msg_dirs:
-            result["message_dir"] = str(msg_dirs[0].resolve())
-            break
-
-    for name in ("wechat-decrypt", "WeChatDump", "wechat_dump"):
-        for base in (home / "Downloads", home / "Desktop", home / "Documents"):
+        for name in ("wechat-decrypt", "WeChatDump", "wechat_dump"):
             candidate = base / name
             if candidate.exists():
                 result["decrypt_workdir"] = str(candidate.resolve())
+                exe_candidate = candidate / "WeChatDecrypt.exe"
+                dist_candidate = candidate / "dist" / "WeChatDecrypt.exe"
+                if exe_candidate.exists():
+                    result["decrypt_exe"] = str(exe_candidate.resolve())
+                elif dist_candidate.exists():
+                    result["decrypt_exe"] = str(dist_candidate.resolve())
+                    result["decrypt_workdir"] = str(dist_candidate.resolve().parent)
                 break
         if result["decrypt_workdir"]:
             break
+
+    if not result["decrypt_exe"]:
+        for base in search_roots:
+            if not base.exists():
+                continue
+            try:
+                nested_exes = list(base.rglob("WeChatDecrypt.exe"))
+            except Exception:
+                nested_exes = []
+            if nested_exes:
+                exe_path = nested_exes[0].resolve()
+                result["decrypt_exe"] = str(exe_path)
+                result["decrypt_workdir"] = str(exe_path.parent)
+                break
+
+    if result["decrypt_workdir"]:
+        workdir = Path(result["decrypt_workdir"])
+        session_candidate = workdir / "decrypted" / "session" / "session.db"
+        message_candidate = workdir / "decrypted" / "message"
+        if session_candidate.exists():
+            result["session_db"] = str(session_candidate.resolve())
+        if message_candidate.exists():
+            result["message_dir"] = str(message_candidate.resolve())
+
+    if not result["session_db"] or not result["message_dir"]:
+        candidates = []
+        docs = home / "Documents" / "WeChat Files"
+        if docs.exists():
+            candidates.append(docs)
+        docs_cn = home / "文档" / "WeChat Files"
+        if docs_cn.exists():
+            candidates.append(docs_cn)
+
+        wxid_dirs: list[Path] = []
+        for base in candidates:
+            wxid_dirs.extend(sorted(base.glob("wxid_*")))
+
+        if not result["session_db"]:
+            for wxid_dir in wxid_dirs:
+                for db in wxid_dir.rglob("session.db"):
+                    result["session_db"] = str(db.resolve())
+                    break
+                if result["session_db"]:
+                    break
+
+        if not result["message_dir"]:
+            for wxid_dir in wxid_dirs:
+                msg_dirs = [p for p in wxid_dir.rglob("Msg") if p.is_dir()]
+                if msg_dirs:
+                    result["message_dir"] = str(msg_dirs[0].resolve())
+                    break
 
     python_candidate = Path.home() / "AppData" / "Local" / "Programs" / "Python"
     if python_candidate.exists():
@@ -154,10 +198,16 @@ def detect_windows_wechat_paths() -> dict[str, str]:
 
     if result["decrypt_workdir"]:
         scripts = list(Path(result["decrypt_workdir"]).rglob("*.py"))
+        preferred = {"decrypt_db.py", "main.py", "wechat_decrypt_launcher.py"}
         for script in scripts:
-            if "decrypt" in script.name.lower() or "dump" in script.name.lower():
+            if script.name in preferred:
                 result["decrypt_script"] = str(script.resolve())
                 break
+        if not result["decrypt_script"]:
+            for script in scripts:
+                if "decrypt" in script.name.lower() or "dump" in script.name.lower():
+                    result["decrypt_script"] = str(script.resolve())
+                    break
 
     return result
 
@@ -177,6 +227,7 @@ def build_config(
     message_dir: str = "",
     message_table: str = "",
     decrypt_workdir: str = "",
+    decrypt_exe: str = "",
     decrypt_python: str = "",
     decrypt_script: str = "",
 ) -> dict:
@@ -234,6 +285,7 @@ def build_config(
             "chat_username": chat_username,
             "message_table": message_table,
             "decrypt_workdir": decrypt_workdir,
+            "decrypt_exe": decrypt_exe,
             "decrypt_python": decrypt_python,
             "decrypt_script": decrypt_script,
         },
@@ -271,6 +323,7 @@ def interactive_config() -> dict:
     message_dir = ""
     message_table = ""
     decrypt_workdir = ""
+    decrypt_exe = ""
     decrypt_python = ""
     decrypt_script = ""
 
@@ -299,11 +352,12 @@ def interactive_config() -> dict:
         print("\n接下来我会尽量自动准备微信数据环境，默认不让普通用户手填这些底层路径。")
         detected = detect_windows_wechat_paths()
         found_count = sum(1 for value in detected.values() if value)
-        print(f"自动探测结果：找到 {found_count}/5 项关键路径。")
+        print(f"自动探测结果：找到 {found_count}/6 项关键路径。")
 
         session_db = detected.get("session_db", "")
         message_dir = detected.get("message_dir", "")
         decrypt_workdir = detected.get("decrypt_workdir", "")
+        decrypt_exe = detected.get("decrypt_exe", "")
         decrypt_python = detected.get("decrypt_python", "")
         decrypt_script = detected.get("decrypt_script", "")
         message_table = ""
@@ -333,6 +387,12 @@ def interactive_config() -> dict:
                 kind="dir",
                 allow_empty=True,
             )
+            decrypt_exe = prompt_path(
+                "请选择 WeChatDecrypt.exe（没有可跳过）",
+                default=decrypt_exe,
+                kind="file",
+                allow_empty=True,
+            )
             decrypt_python = prompt_path(
                 "请选择解密脚本所用 Python（没有可跳过）",
                 default=decrypt_python,
@@ -360,6 +420,7 @@ def interactive_config() -> dict:
         message_dir=message_dir,
         message_table=message_table,
         decrypt_workdir=decrypt_workdir,
+        decrypt_exe=decrypt_exe,
         decrypt_python=decrypt_python,
         decrypt_script=decrypt_script,
     )
@@ -386,6 +447,7 @@ def cli_config(args) -> dict:
         message_dir=normalize_path(args.message_dir) if args.message_dir else "",
         message_table=args.message_table or "",
         decrypt_workdir=normalize_path(args.decrypt_workdir) if args.decrypt_workdir else "",
+        decrypt_exe=normalize_path(args.decrypt_exe) if args.decrypt_exe else "",
         decrypt_python=normalize_path(args.decrypt_python) if args.decrypt_python else "",
         decrypt_script=normalize_path(args.decrypt_script) if args.decrypt_script else "",
     )
@@ -426,7 +488,7 @@ def print_config_summary(config: dict) -> None:
     print(f"- 扫描方式：{monitor_text}")
     auto_ready = any(
         wechat.get(key)
-        for key in ("session_db", "message_dir", "decrypt_workdir", "decrypt_python", "decrypt_script")
+        for key in ("session_db", "message_dir", "decrypt_workdir", "decrypt_exe", "decrypt_python", "decrypt_script")
     )
     print(f"- 微信数据准备：{'已自动记录部分路径' if auto_ready else '暂未自动准备完成'}")
     print("\n你后面最常用的启动方式：")
@@ -449,6 +511,7 @@ def main():
     parser.add_argument("--message-dir")
     parser.add_argument("--message-table")
     parser.add_argument("--decrypt-workdir")
+    parser.add_argument("--decrypt-exe")
     parser.add_argument("--decrypt-python")
     parser.add_argument("--decrypt-script")
     parser.add_argument(
