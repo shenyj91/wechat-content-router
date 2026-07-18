@@ -236,6 +236,47 @@ def cli_config(args) -> dict:
     )
 
 
+def print_config_summary(config: dict) -> None:
+    storage = config.get("storage") or {}
+    settings = config.get("settings") or {}
+    workflow = config.get("workflow") or {}
+    wechat = config.get("wechat") or {}
+    target = storage.get("local_root") if storage.get("mode") == "local" else config.get("vault_root")
+    default_action = workflow.get("default_action") or "manual_link"
+    monitor_mode = workflow.get("monitor_mode") or "manual"
+    interval_seconds = int(workflow.get("interval_seconds") or 900)
+
+    if default_action == "manual_link":
+        action_text = "手动粘贴链接/分享文案"
+    else:
+        action_text = "自动扫描微信"
+
+    if not wechat.get("enabled"):
+        wechat_entry = "未启用微信自动扫描"
+    elif (wechat.get("chat_username") or "filehelper") == "filehelper":
+        wechat_entry = "固定监控：文件传输助手"
+    else:
+        wechat_entry = f"固定监控：{wechat.get('chat_username')}"
+
+    if monitor_mode == "realtime":
+        monitor_text = "尽量实时（15 秒轮询）"
+    elif monitor_mode == "interval":
+        monitor_text = f"固定间隔（约 {max(1, interval_seconds // 60)} 分钟一次）"
+    else:
+        monitor_text = "手动/只跑一次"
+
+    print("\n配置摘要")
+    print(f"- 保存模式：{'本地文件夹' if storage.get('mode') == 'local' else 'Obsidian'}")
+    print(f"- 目标路径：{target}")
+    print(f"- OCR：{'开启' if settings.get('runOcr', True) else '关闭'}")
+    print(f"- 默认使用方式：{action_text}")
+    print(f"- 微信入口：{wechat_entry}")
+    print(f"- 扫描方式：{monitor_text}")
+    print("\n你后面最常用的启动方式：")
+    print("- 双击 START-HERE.command")
+    print("- 或运行：python3 scripts/use_router.py")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Create a local config for wechat-content-router.")
     parser.add_argument("--mode", choices=["obsidian", "local"], help="Where imported files should be saved")
@@ -265,8 +306,7 @@ def main():
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n配置已写入：{output_path}")
-    print(f"当前保存模式：{config['storage']['mode']}")
-    print(f"当前默认使用方式：{config['workflow']['default_action']}")
+    print_config_summary(config)
 
 
 if __name__ == "__main__":
