@@ -296,50 +296,55 @@ def interactive_config() -> dict:
             minutes = prompt_text("请输入轮询间隔（分钟）", default="10")
             interval_seconds = max(60, int(float(minutes) * 60))
 
-        auto_detect = prompt_yes_no("要不要先自动查找这台电脑上的微信数据库和常见解密路径？", default=True)
-        detected = detect_windows_wechat_paths() if auto_detect else {}
-        if detected:
-            print("\n已尝试自动查找：")
-            for key, label in (
-                ("session_db", "session.db"),
-                ("message_dir", "消息数据库目录"),
-                ("decrypt_workdir", "解密工具目录"),
-                ("decrypt_python", "解密脚本 Python"),
-                ("decrypt_script", "解密脚本"),
-            ):
-                print(f"- {label}：{detected.get(key) or '未找到'}")
+        print("\n接下来我会尽量自动准备微信数据环境，默认不让普通用户手填这些底层路径。")
+        detected = detect_windows_wechat_paths()
+        found_count = sum(1 for value in detected.values() if value)
+        print(f"自动探测结果：找到 {found_count}/5 项关键路径。")
 
-        session_db = prompt_path(
-            "请选择微信 session.db 文件（不知道可跳过）",
-            default=detected.get("session_db", ""),
-            kind="file",
-            allow_empty=True,
-        )
-        message_dir = prompt_path(
-            "请选择解密后的消息数据库目录（不知道可跳过）",
-            default=detected.get("message_dir", ""),
-            kind="dir",
-            allow_empty=True,
-        )
-        message_table = prompt_text("消息表名（不知道可留空）", allow_empty=True)
-        decrypt_workdir = prompt_path(
-            "请选择解密工具目录（没有可跳过）",
-            default=detected.get("decrypt_workdir", ""),
-            kind="dir",
-            allow_empty=True,
-        )
-        decrypt_python = prompt_path(
-            "请选择解密脚本所用 Python（没有可跳过）",
-            default=detected.get("decrypt_python", ""),
-            kind="file",
-            allow_empty=True,
-        )
-        decrypt_script = prompt_path(
-            "请选择解密脚本（没有可跳过）",
-            default=detected.get("decrypt_script", ""),
-            kind="file",
-            allow_empty=True,
-        )
+        session_db = detected.get("session_db", "")
+        message_dir = detected.get("message_dir", "")
+        decrypt_workdir = detected.get("decrypt_workdir", "")
+        decrypt_python = detected.get("decrypt_python", "")
+        decrypt_script = detected.get("decrypt_script", "")
+        message_table = ""
+
+        if found_count:
+            print("已自动记录能找到的微信路径，后面先按自动结果尝试。")
+        else:
+            print("当前没有自动找到可用的微信路径。")
+
+        if prompt_yes_no("要不要打开“高级设置”手动补充微信底层路径？普通客户一般选否", default=False):
+            session_db = prompt_path(
+                "请选择微信 session.db 文件（不知道可跳过）",
+                default=session_db,
+                kind="file",
+                allow_empty=True,
+            )
+            message_dir = prompt_path(
+                "请选择解密后的消息数据库目录（不知道可跳过）",
+                default=message_dir,
+                kind="dir",
+                allow_empty=True,
+            )
+            message_table = prompt_text("消息表名（不知道可留空）", allow_empty=True)
+            decrypt_workdir = prompt_path(
+                "请选择解密工具目录（没有可跳过）",
+                default=decrypt_workdir,
+                kind="dir",
+                allow_empty=True,
+            )
+            decrypt_python = prompt_path(
+                "请选择解密脚本所用 Python（没有可跳过）",
+                default=decrypt_python,
+                kind="file",
+                allow_empty=True,
+            )
+            decrypt_script = prompt_path(
+                "请选择解密脚本（没有可跳过）",
+                default=decrypt_script,
+                kind="file",
+                allow_empty=True,
+            )
 
     return build_config(
         mode=mode,
@@ -419,9 +424,11 @@ def print_config_summary(config: dict) -> None:
     print(f"- 默认使用方式：{action_text}")
     print(f"- 微信入口：{wechat_entry}")
     print(f"- 扫描方式：{monitor_text}")
-    print(f"- session.db：{wechat.get('session_db') or '未配置'}")
-    print(f"- 消息数据库目录：{wechat.get('message_dir') or '未配置'}")
-    print(f"- 解密工具目录：{wechat.get('decrypt_workdir') or '未配置'}")
+    auto_ready = any(
+        wechat.get(key)
+        for key in ("session_db", "message_dir", "decrypt_workdir", "decrypt_python", "decrypt_script")
+    )
+    print(f"- 微信数据准备：{'已自动记录部分路径' if auto_ready else '暂未自动准备完成'}")
     print("\n你后面最常用的启动方式：")
     print("- 双击 START-HERE.bat")
     print("- 或运行：python scripts/use_router.py")
