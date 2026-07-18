@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 
@@ -39,6 +40,56 @@ def prompt_yes_no(title: str, default: bool = True) -> bool:
         print("请输入 y 或 n。")
 
 
+def pick_path_via_dialog(*, title: str, kind: str) -> str:
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception:
+        return ""
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    root.update()
+    try:
+        if kind == "dir":
+            value = filedialog.askdirectory(title=title)
+        else:
+            value = filedialog.askopenfilename(title=title)
+    finally:
+        root.destroy()
+    return normalize_path(value) if value else ""
+
+
+def prompt_path(title: str, *, default: str = "", kind: str = "dir", allow_empty: bool = False) -> str:
+    while True:
+        print(f"\n{title}")
+        if default:
+            print(f"默认：{default}")
+        print("可直接粘贴路径，或输入：")
+        print("B = 打开选择器")
+        if allow_empty:
+            print("S = 跳过")
+        raw = input("请输入路径 / B / S：").strip()
+        if not raw:
+            if default:
+                return normalize_path(default)
+            if allow_empty:
+                return ""
+            print("这个值不能为空。")
+            continue
+        upper = raw.upper()
+        if upper == "B":
+            selected = pick_path_via_dialog(title=title, kind=kind)
+            if selected:
+                return selected
+            print("没有选到路径。")
+            continue
+        if allow_empty and upper == "S":
+            return ""
+        return normalize_path(raw)
+
+
 def prompt_text(title: str, default: str = "", allow_empty: bool = False) -> str:
     while True:
         raw = input(f"{title}{'（默认：' + default + '）' if default else ''}：").strip()
@@ -49,6 +100,66 @@ def prompt_text(title: str, default: str = "", allow_empty: bool = False) -> str
         if allow_empty:
             return ""
         print("这个值不能为空。")
+
+
+def detect_windows_wechat_paths() -> dict[str, str]:
+    result = {
+        "session_db": "",
+        "message_dir": "",
+        "decrypt_workdir": "",
+        "decrypt_python": "",
+        "decrypt_script": "",
+    }
+
+    home = Path.home()
+    candidates = []
+    docs = home / "Documents" / "WeChat Files"
+    if docs.exists():
+        candidates.append(docs)
+    docs_cn = home / "文档" / "WeChat Files"
+    if docs_cn.exists():
+        candidates.append(docs_cn)
+
+    wxid_dirs: list[Path] = []
+    for base in candidates:
+        wxid_dirs.extend(sorted(base.glob("wxid_*")))
+
+    for wxid_dir in wxid_dirs:
+        for db in wxid_dir.rglob("session.db"):
+            result["session_db"] = str(db.resolve())
+            break
+        if result["session_db"]:
+            break
+
+    for wxid_dir in wxid_dirs:
+        msg_dirs = [p for p in wxid_dir.rglob("Msg") if p.is_dir()]
+        if msg_dirs:
+            result["message_dir"] = str(msg_dirs[0].resolve())
+            break
+
+    for name in ("wechat-decrypt", "WeChatDump", "wechat_dump"):
+        for base in (home / "Downloads", home / "Desktop", home / "Documents"):
+            candidate = base / name
+            if candidate.exists():
+                result["decrypt_workdir"] = str(candidate.resolve())
+                break
+        if result["decrypt_workdir"]:
+            break
+
+    python_candidate = Path.home() / "AppData" / "Local" / "Programs" / "Python"
+    if python_candidate.exists():
+        pythons = sorted(python_candidate.glob("Python*/python.exe"))
+        if pythons:
+            result["decrypt_python"] = str(pythons[-1].resolve())
+
+    if result["decrypt_workdir"]:
+        scripts = list(Path(result["decrypt_workdir"]).rglob("*.py"))
+        for script in scripts:
+            if "decrypt" in script.name.lower() or "dump" in script.name.lower():
+                result["decrypt_script"] = str(script.resolve())
+                break
+
+    return result
 
 
 def build_config(
@@ -140,9 +251,9 @@ def interactive_config() -> dict:
     vault_root = ""
     local_root = ""
     if mode == "obsidian":
-        vault_root = normalize_path(prompt_text("请输入 Obsidian vault 路径"))
+        vault_root = prompt_path("请选择 Obsidian vault 路径", kind="dir")
     else:
-        local_root = normalize_path(prompt_text("请输入本地保存目录", default="~/Documents/ImportedContent"))
+        local_root = prompt_path("请选择本地保存目录", default="~/Documents/ImportedContent", kind="dir")
 
     run_ocr = prompt_yes_no("要不要开启图片 OCR？", default=True)
 
@@ -173,6 +284,7 @@ def interactive_config() -> dict:
             chat_username = prompt_text("请输入要固定监控的微信会话名")
         else:
             chat_username = "filehelper"
+
         monitor_mode = prompt_choice(
             "自动扫描要怎么跑？",
             [("manual", "先只跑一次"), ("realtime", "尽量实时（15 秒轮询）"), ("interval", "按固定间隔轮询")],
@@ -184,12 +296,50 @@ def interactive_config() -> dict:
             minutes = prompt_text("请输入轮询间隔（分钟）", default="10")
             interval_seconds = max(60, int(float(minutes) * 60))
 
-        session_db = normalize_path(prompt_text("微信 session.db 路径", allow_empty=True))
-        message_dir = normalize_path(prompt_text("微信解密后的消息数据库目录", allow_empty=True))
-        message_table = prompt_text("消息表名（不知道可先留空）", allow_empty=True)
-        decrypt_workdir = normalize_path(prompt_text("微信解密工具目录（可留空）", allow_empty=True))
-        decrypt_python = normalize_path(prompt_text("解密脚本 Python 路径（可留空）", allow_empty=True))
-        decrypt_script = normalize_path(prompt_text("解密脚本路径（可留空）", allow_empty=True))
+        auto_detect = prompt_yes_no("要不要先自动查找这台电脑上的微信数据库和常见解密路径？", default=True)
+        detected = detect_windows_wechat_paths() if auto_detect else {}
+        if detected:
+            print("\n已尝试自动查找：")
+            for key, label in (
+                ("session_db", "session.db"),
+                ("message_dir", "消息数据库目录"),
+                ("decrypt_workdir", "解密工具目录"),
+                ("decrypt_python", "解密脚本 Python"),
+                ("decrypt_script", "解密脚本"),
+            ):
+                print(f"- {label}：{detected.get(key) or '未找到'}")
+
+        session_db = prompt_path(
+            "请选择微信 session.db 文件（不知道可跳过）",
+            default=detected.get("session_db", ""),
+            kind="file",
+            allow_empty=True,
+        )
+        message_dir = prompt_path(
+            "请选择解密后的消息数据库目录（不知道可跳过）",
+            default=detected.get("message_dir", ""),
+            kind="dir",
+            allow_empty=True,
+        )
+        message_table = prompt_text("消息表名（不知道可留空）", allow_empty=True)
+        decrypt_workdir = prompt_path(
+            "请选择解密工具目录（没有可跳过）",
+            default=detected.get("decrypt_workdir", ""),
+            kind="dir",
+            allow_empty=True,
+        )
+        decrypt_python = prompt_path(
+            "请选择解密脚本所用 Python（没有可跳过）",
+            default=detected.get("decrypt_python", ""),
+            kind="file",
+            allow_empty=True,
+        )
+        decrypt_script = prompt_path(
+            "请选择解密脚本（没有可跳过）",
+            default=detected.get("decrypt_script", ""),
+            kind="file",
+            allow_empty=True,
+        )
 
     return build_config(
         mode=mode,
@@ -246,10 +396,7 @@ def print_config_summary(config: dict) -> None:
     monitor_mode = workflow.get("monitor_mode") or "manual"
     interval_seconds = int(workflow.get("interval_seconds") or 900)
 
-    if default_action == "manual_link":
-        action_text = "手动粘贴链接/分享文案"
-    else:
-        action_text = "自动扫描微信"
+    action_text = "手动粘贴链接/分享文案" if default_action == "manual_link" else "自动扫描微信"
 
     if not wechat.get("enabled"):
         wechat_entry = "未启用微信自动扫描"
@@ -272,6 +419,9 @@ def print_config_summary(config: dict) -> None:
     print(f"- 默认使用方式：{action_text}")
     print(f"- 微信入口：{wechat_entry}")
     print(f"- 扫描方式：{monitor_text}")
+    print(f"- session.db：{wechat.get('session_db') or '未配置'}")
+    print(f"- 消息数据库目录：{wechat.get('message_dir') or '未配置'}")
+    print(f"- 解密工具目录：{wechat.get('decrypt_workdir') or '未配置'}")
     print("\n你后面最常用的启动方式：")
     print("- 双击 START-HERE.bat")
     print("- 或运行：python scripts/use_router.py")
