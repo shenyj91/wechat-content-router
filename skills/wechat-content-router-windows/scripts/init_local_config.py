@@ -164,7 +164,15 @@ def interactive_config() -> dict:
     decrypt_script = ""
 
     if wechat_enabled:
-        chat_username = prompt_text("要扫描哪个微信会话", default="filehelper")
+        wechat_entry = prompt_choice(
+            "你要固定监控哪个微信入口？",
+            [("filehelper", "文件传输助手（推荐）"), ("custom", "指定某个聊天对象")],
+            default_key="filehelper",
+        )
+        if wechat_entry == "custom":
+            chat_username = prompt_text("请输入要固定监控的微信会话名")
+        else:
+            chat_username = "filehelper"
         monitor_mode = prompt_choice(
             "自动扫描要怎么跑？",
             [("manual", "先只跑一次"), ("realtime", "尽量实时（15 秒轮询）"), ("interval", "按固定间隔轮询")],

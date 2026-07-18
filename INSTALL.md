@@ -162,6 +162,7 @@ python skills/wechat-content-router-windows/scripts/init_local_config.py
 - 路径是什么
 - 要不要开 OCR
 - 手动贴链接还是自动扫微信
+- 如果自动扫微信：固定文件传输助手，还是固定某个聊天对象
 - 要不要间隔扫描
 
 ### 仍然支持命令行方式
