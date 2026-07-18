@@ -17,15 +17,10 @@ description: >
 如果这是安装后的首次调用，或者当前还没有 `scripts/config.json`：
 
 1. 不要先讲大段说明
-2. 直接进入“开始配置 wechat-content-router-windows”
-3. 按顺序一步步问完：
-   - 保存到本地还是 Obsidian
-   - 路径是什么
-   - 要不要开 OCR
-   - 手动贴链接还是自动扫描微信
-   - 如果自动扫微信：固定文件传输助手，还是固定某个聊天对象
-   - 扫描频率是多少
-4. 配置完成后，再进入日常使用
+2. 不要在聊天里替用户填写路径，也不要把“其他补充...”当成真实文件夹选择
+3. 先明确要求用户在 **Windows 本地** 双击 `START-HERE.bat`（或运行 `python scripts/use_router.py`）
+4. 说明真实配置向导会在本机弹目录选择器，并在后台自动处理微信定位/解密
+5. 只有用户已经完成本地配置后，再进入日常使用
 
 当前 Windows OCR 后端：
 
@@ -134,7 +129,7 @@ python3 scripts/init_local_config.py --vault-root "/Users/yourname/Documents/Obs
 python3 scripts/init_local_config.py --mode local --local-root "/Users/yourname/Documents/ImportedContent"
 ```
 
-然后补全 `scripts/config.json` 里的微信路径，再运行：
+然后直接运行：
 
 ```bash
 python3 scripts/run_wechat_router_pipeline.py

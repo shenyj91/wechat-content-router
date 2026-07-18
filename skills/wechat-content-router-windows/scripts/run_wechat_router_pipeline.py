@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from init_local_config import detect_windows_wechat_paths
+from init_local_config import collect_windows_wechat_diagnostics, detect_windows_wechat_paths
 
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
@@ -142,10 +142,12 @@ def main():
 
     ready, reason = validate_import_ready(wechat)
     if not ready:
+        diagnostics = collect_windows_wechat_diagnostics()
         print(json.dumps({
             "status": "wechat_prepare_failed",
             "reason": reason,
             "hint": "程序没能自动准备好微信数据环境，请联系维护者处理这台 Windows 的微信定位/解密适配。",
+            "diagnostics": diagnostics,
         }, ensure_ascii=False, indent=2))
         sys.exit(1)
 

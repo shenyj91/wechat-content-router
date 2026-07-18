@@ -62,6 +62,9 @@ def pick_path_via_dialog(*, title: str, kind: str) -> str:
 
 
 def prompt_path(title: str, *, default: str = "", kind: str = "dir", allow_empty: bool = False) -> str:
+    selected = pick_path_via_dialog(title=title, kind=kind)
+    if selected:
+        return selected
     while True:
         print(f"\n{title}")
         if default:
@@ -162,34 +165,6 @@ def detect_windows_wechat_paths() -> dict[str, str]:
         if message_candidate.exists():
             result["message_dir"] = str(message_candidate.resolve())
 
-    if not result["session_db"] or not result["message_dir"]:
-        candidates = []
-        docs = home / "Documents" / "WeChat Files"
-        if docs.exists():
-            candidates.append(docs)
-        docs_cn = home / "文档" / "WeChat Files"
-        if docs_cn.exists():
-            candidates.append(docs_cn)
-
-        wxid_dirs: list[Path] = []
-        for base in candidates:
-            wxid_dirs.extend(sorted(base.glob("wxid_*")))
-
-        if not result["session_db"]:
-            for wxid_dir in wxid_dirs:
-                for db in wxid_dir.rglob("session.db"):
-                    result["session_db"] = str(db.resolve())
-                    break
-                if result["session_db"]:
-                    break
-
-        if not result["message_dir"]:
-            for wxid_dir in wxid_dirs:
-                msg_dirs = [p for p in wxid_dir.rglob("Msg") if p.is_dir()]
-                if msg_dirs:
-                    result["message_dir"] = str(msg_dirs[0].resolve())
-                    break
-
     python_candidate = Path.home() / "AppData" / "Local" / "Programs" / "Python"
     if python_candidate.exists():
         pythons = sorted(python_candidate.glob("Python*/python.exe"))
@@ -210,6 +185,84 @@ def detect_windows_wechat_paths() -> dict[str, str]:
                     break
 
     return result
+
+
+def collect_windows_wechat_diagnostics() -> dict:
+    home = Path.home()
+    tool_search_roots = [home / "Downloads", home / "Desktop", home / "Documents"]
+    data_roots = [home / "Documents" / "WeChat Files", home / "文档" / "WeChat Files"]
+
+    existing_tool_roots = [str(p.resolve()) for p in tool_search_roots if p.exists()]
+    existing_data_roots = [str(p.resolve()) for p in data_roots if p.exists()]
+
+    tool_dir_hits: list[str] = []
+    tool_exe_hits: list[str] = []
+    wxid_dirs: list[str] = []
+    raw_session_candidates: list[str] = []
+    raw_msg_dirs: list[str] = []
+    python_hits: list[str] = []
+
+    for base in tool_search_roots:
+        if not base.exists():
+            continue
+        for name in ("wechat-decrypt", "WeChatDump", "wechat_dump"):
+            candidate = base / name
+            if candidate.exists():
+                tool_dir_hits.append(str(candidate.resolve()))
+        direct_exe = base / "WeChatDecrypt.exe"
+        if direct_exe.exists():
+            tool_exe_hits.append(str(direct_exe.resolve()))
+        try:
+            nested_exes = list(base.rglob("WeChatDecrypt.exe"))
+        except Exception:
+            nested_exes = []
+        for exe in nested_exes[:20]:
+            exe_str = str(exe.resolve())
+            if exe_str not in tool_exe_hits:
+                tool_exe_hits.append(exe_str)
+
+    for root in data_roots:
+        if not root.exists():
+            continue
+        for wxid_dir in sorted(root.glob("wxid_*"))[:20]:
+            wxid_dirs.append(str(wxid_dir.resolve()))
+            for db in wxid_dir.rglob("session.db"):
+                raw_session_candidates.append(str(db.resolve()))
+                if len(raw_session_candidates) >= 20:
+                    break
+            for msg_dir in wxid_dir.rglob("Msg"):
+                if msg_dir.is_dir():
+                    raw_msg_dirs.append(str(msg_dir.resolve()))
+                    if len(raw_msg_dirs) >= 20:
+                        break
+            if len(raw_session_candidates) >= 20 and len(raw_msg_dirs) >= 20:
+                break
+
+    python_candidate = home / "AppData" / "Local" / "Programs" / "Python"
+    if python_candidate.exists():
+        python_hits = [str(p.resolve()) for p in sorted(python_candidate.glob("Python*/python.exe"))[-5:]]
+
+    detected = detect_windows_wechat_paths()
+    notes: list[str] = []
+    if not tool_dir_hits and not tool_exe_hits:
+        notes.append("未找到 WeChatDecrypt.exe / wechat-decrypt / WeChatDump 一类解密工具。")
+    if wxid_dirs and not (detected.get("session_db") and detected.get("message_dir")):
+        notes.append("找到了微信原始数据目录，但还没有解密后的 session.db / message 产物。")
+    if not wxid_dirs:
+        notes.append("未找到 Windows 微信数据目录（Documents/WeChat Files 下无 wxid_*）。")
+
+    return {
+        "tool_search_roots": existing_tool_roots,
+        "data_roots": existing_data_roots,
+        "tool_dir_hits": tool_dir_hits[:20],
+        "tool_exe_hits": tool_exe_hits[:20],
+        "wxid_dirs": wxid_dirs[:20],
+        "raw_session_candidates": raw_session_candidates[:20],
+        "raw_msg_dirs": raw_msg_dirs[:20],
+        "python_hits": python_hits,
+        "detected": detected,
+        "notes": notes,
+    }
 
 
 def build_config(
