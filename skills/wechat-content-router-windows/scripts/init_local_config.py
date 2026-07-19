@@ -480,17 +480,12 @@ def build_config(
     interval_seconds: int = 900,
     wechat_enabled: bool = False,
     chat_username: str = "filehelper",
+    account_dir: str = "",
     db_dir: str = "",
     wechat_process: str = "Weixin.exe",
     session_db: str = "",
     message_dir: str = "",
     message_table: str = "",
-    selected_account_wxid: str = "",
-    selected_account_label: str = "",
-    decrypt_workdir: str = "",
-    decrypt_exe: str = "",
-    decrypt_python: str = "",
-    decrypt_script: str = "",
 ) -> dict:
     state_root = vault_root or local_root
     return {
@@ -541,6 +536,7 @@ def build_config(
         },
         "wechat": {
             "enabled": wechat_enabled,
+            "account_dir": account_dir,
             "db_dir": db_dir,
             "wechat_process": wechat_process,
             "session_db": session_db,
@@ -618,39 +614,50 @@ def interactive_config() -> dict:
             minutes = prompt_text("请输入轮询间隔（分钟）", default="10")
             interval_seconds = max(60, int(float(minutes) * 60))
 
-        print("\n微信定位、数据查找、解密这些底层步骤会在后台自动处理。")
-        print("你后面正常用就行，首次扫描时可能会稍微久一点。")
-        detected = detect_windows_wechat_paths()
-        accounts = detect_windows_wechat_accounts()
+        print("\n将通过内置解密模块自动定位微信账号目录（基于WxLens）。")
+        print("需要：微信4.x已登录、Node.js已安装、以管理员身份运行。")
+        
+        accounts = []
+        account_dir = ""
+        try:
+            import wechat_win_decrypt
+            accounts = wechat_win_decrypt.list_all_accounts()
+        except Exception as e:
+            print(f"⚠️ 自动查找账号失败：{e}")
+            print("请确保微信4.x已安装，或稍后手动填入account_dir。")
 
         if accounts:
             if len(accounts) == 1:
                 selected = accounts[0]
-                print(f"\n已自动绑定微信账号：{selected.get('label')}")
+                account_dir = selected["account_dir"]
+                selected_account_wxid = selected["wxid"]
+                selected_account_label = selected["wxid"]
+                print(f"\n已自动绑定微信账号：{selected_account_label}")
             else:
-                print("\n已识别到多个微信账号，请选一个作为后续固定承接账号：")
-                options = [(str(item["db_dir"]), str(item["label"])) for item in accounts]
-                selected_db_dir = prompt_choice("请选择要绑定的微信账号", options, default_key=str(accounts[0]["db_dir"]))
-                selected = next((item for item in accounts if str(item["db_dir"]) == selected_db_dir), accounts[0])
-
-            db_dir = str(selected.get("db_dir") or "")
-            session_db = str(selected.get("session_db") or "")
-            message_dir = str(selected.get("message_dir") or "")
-            selected_account_wxid = str(selected.get("wxid") or "")
-            selected_account_label = str(selected.get("label") or "")
+                print("\n已识别到多个微信账号，请选一个作为固定绑定账号：")
+                options = [(item["account_dir"], f"{item['wxid']} ({item['account_dir']})") for item in accounts]
+                selected_dir = prompt_choice(
+                    "请选择要绑定的微信账号",
+                    options,
+                    default_key=accounts[0]["account_dir"],
+                )
+                selected = next((a for a in accounts if a["account_dir"] == selected_dir), accounts[0])
+                account_dir = selected["account_dir"]
+                selected_account_wxid = selected["wxid"]
+                selected_account_label = selected["wxid"]
         else:
-            selected = {}
+            print("\n未检测到微信账号，稍后可手动在config.json里填入account_dir。")
 
-        session_db = session_db or detected.get("session_db", "")
-        message_dir = message_dir or detected.get("message_dir", "")
-        db_dir = db_dir or detected.get("db_dir", "")
-        selected_account_wxid = selected_account_wxid or detected.get("selected_account_wxid", "")
-        selected_account_label = selected_account_label or detected.get("selected_account_label", "")
-        wechat_process = detected.get("wechat_process", "Weixin.exe")
-        decrypt_workdir = detected.get("decrypt_workdir", "")
-        decrypt_exe = detected.get("decrypt_exe", "")
-        decrypt_python = detected.get("decrypt_python", "")
-        decrypt_script = detected.get("decrypt_script", "")
+        # 新方案不再依赖老的detect_windows_wechat_paths / WeChatDecrypt.exe
+        # 保留这些字段兼容旧config结构，实际不使用
+        db_dir = account_dir
+        session_db = ""
+        message_dir = account_dir
+        wechat_process = "Weixin.exe"
+        decrypt_workdir = ""
+        decrypt_exe = ""
+        decrypt_python = ""
+        decrypt_script = ""
         message_table = ""
 
     return build_config(
@@ -663,6 +670,7 @@ def interactive_config() -> dict:
         interval_seconds=interval_seconds,
         wechat_enabled=wechat_enabled,
         chat_username=chat_username,
+        account_dir=account_dir,
         db_dir=db_dir,
         wechat_process=wechat_process,
         session_db=session_db,
@@ -694,6 +702,7 @@ def cli_config(args) -> dict:
         interval_seconds=args.interval_seconds,
         wechat_enabled=args.wechat_enabled,
         chat_username=args.chat_username,
+        account_dir=normalize_path(args.account_dir) if getattr(args, "account_dir", None) else "",
         db_dir=normalize_path(args.db_dir) if getattr(args, "db_dir", None) else "",
         wechat_process=getattr(args, "wechat_process", None) or "Weixin.exe",
         session_db=normalize_path(args.session_db) if args.session_db else "",
@@ -761,6 +770,7 @@ def main():
     parser.add_argument("--interval-seconds", type=int, default=900)
     parser.add_argument("--wechat-enabled", action="store_true")
     parser.add_argument("--chat-username", default="filehelper")
+    parser.add_argument("--account-dir")
     parser.add_argument("--db-dir")
     parser.add_argument("--wechat-process", default="Weixin.exe")
     parser.add_argument("--session-db")

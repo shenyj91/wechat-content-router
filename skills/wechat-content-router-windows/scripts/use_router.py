@@ -94,11 +94,19 @@ def main():
         print("2. 运行一次微信自动扫描")
         print("3. 按当前配置持续扫描微信")
         print("4. 重新配置")
+        print("5. 修改监控会话（当前：" + (config.get("wechat") or {}).get("chat_username", "filehelper") + "）")
         print("0. 退出")
         choice = input("请输入序号：").strip()
 
         if choice == "0":
             return
+        if choice == "5":
+            new_session = select_session(config)
+            if new_session:
+                config["wechat"]["chat_username"] = new_session
+                CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+                print(f"已保存，后续扫描将使用会话：{new_session}")
+            continue
         if choice == "4":
             subprocess.run([sys.executable, str(SCRIPT_DIR / "bootstrap_config.py")], check=True)
             config = load_config()
@@ -146,3 +154,51 @@ if __name__ == "__main__":
     except Exception as error:
         print(f"ERROR: {error}", file=sys.stderr)
         sys.exit(1)
+
+
+def select_session(config: dict):
+    wechat = config.get("wechat") or {}
+    account_dir = wechat.get("account_dir")
+    if not account_dir:
+        print("未配置微信账号目录，请先重新配置。")
+        return None
+    decrypt_module = load_importer("wechat_win_decrypt", SCRIPT_DIR / "wechat_win_decrypt.py")
+    cached_key = wechat.get("_cached_key")
+    if not cached_key:
+        print("需要先提取密钥（微信必须登录，以管理员身份运行）...")
+        try:
+            cached_key = decrypt_module.extract_wechat_key()
+            config["wechat"]["_cached_key"] = cached_key
+            CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            print(f"密钥提取失败：{e}")
+            return None
+    print("正在获取会话列表...")
+    try:
+        sessions = decrypt_module.list_sessions_with_info(account_dir, cached_key)
+    except Exception as e:
+        print(f"获取会话列表失败：{e}")
+        return None
+    if not sessions:
+        print("没有找到任何会话。")
+        return None
+    print(f"\n找到 {len(sessions)} 个会话（显示前30个）：")
+    display = sessions[:30]
+    for i, s in enumerate(display, 1):
+        tag = "[群]" if s["is_group"] else "[联系人]"
+        print(f"{i:3}. {tag} {s['display_name']} ({s['session_id']})")
+    print()
+    while True:
+        raw = input("请输入序号（或直接输入会话ID，如 filehelper）：").strip()
+        if not raw:
+            continue
+        if raw.isdigit():
+            idx = int(raw) - 1
+            if 0 <= idx < len(display):
+                chosen = display[idx]["session_id"]
+                print(f"已选择：{display[idx]['display_name']} ({chosen})")
+                return chosen
+            print("序号超出范围。")
+        else:
+            print(f"已选择：{raw}")
+            return raw
