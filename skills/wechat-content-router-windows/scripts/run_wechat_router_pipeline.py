@@ -67,6 +67,10 @@ def load_importer(module_name, script_path):
     return module
 
 
+def load_local_link_importer():
+    return load_importer("wechat_router_local_links", SCRIPT_DIR / "import_latest_wechat_links.py")
+
+
 def main():
     dep_errors = check_dependencies()
     if dep_errors:
@@ -78,6 +82,73 @@ def main():
 
     if not wechat.get("enabled"):
         print(json.dumps({"status": "wechat_disabled"}, ensure_ascii=False, indent=2))
+        return
+
+    source_mode = (wechat.get("source_mode") or "decrypted_files").lower()
+    state_path = Path(config.get("state_file") or (SCRIPT_DIR / ".wechat-router-state.json"))
+    processed_keys = load_state(state_path)
+
+    if source_mode == "decrypted_files":
+        if not wechat.get("session_db") or not wechat.get("message_dir"):
+            print(json.dumps({
+                "status": "decrypted_files_not_configured",
+                "error": "请先在启动器里配置解密后的 session.db 和 message_*.db 目录",
+            }, ensure_ascii=False, indent=2))
+            sys.exit(1)
+        importer = load_local_link_importer()
+        try:
+            result = importer.collect_recent_messages(config)
+        except Exception as e:
+            print(json.dumps({
+                "status": "decrypt_failed",
+                "error": str(e),
+            }, ensure_ascii=False, indent=2))
+            sys.exit(1)
+
+        links = result or []
+        if not links:
+            print(json.dumps({"status": "no_new_links", "count": 0}, ensure_ascii=False, indent=2))
+            return
+
+        new_links = []
+        for item in links:
+            key = make_key(item)
+            if key not in processed_keys:
+                new_links.append(item)
+
+        if not new_links:
+            print(json.dumps({"status": "no_new_links", "count": 0, "skipped": len(links)}, ensure_ascii=False, indent=2))
+            return
+
+        xhs_importer = load_importer("router_xhs", SCRIPT_DIR / "import_xhs_note.py")
+        mp_importer = load_importer("router_mp", SCRIPT_DIR / "import_wechat_mp_article.py")
+        feishu_importer = load_importer("router_feishu", SCRIPT_DIR / "import_feishu_page.py")
+
+        imports = []
+        for item in new_links:
+            key = make_key(item)
+            try:
+                if item["type"] == "xhs":
+                    res = xhs_importer.import_note(item["raw_text"], config=config)
+                elif item["type"] == "mp":
+                    res = mp_importer.import_article(item["url"], config=config)
+                elif item["type"] == "feishu":
+                    res = feishu_importer.import_page(item["url"], config=config)
+                else:
+                    continue
+                imports.append({"type": item["type"], "url": item["url"], "result": res})
+                processed_keys.add(key)
+            except Exception as e:
+                imports.append({"type": item["type"], "url": item["url"], "error": str(e)})
+
+        save_state(state_path, processed_keys)
+        print(json.dumps({
+            "status": "imported",
+            "count": len(imports),
+            "skipped": len(links) - len(new_links),
+            "state_file": str(state_path),
+            "imports": imports,
+        }, ensure_ascii=False, indent=2))
         return
 
     account_dir = wechat.get("account_dir")
@@ -121,9 +192,6 @@ def main():
             "count": 0,
         }, ensure_ascii=False, indent=2))
         return
-
-    state_path = Path(config.get("state_file") or (SCRIPT_DIR / ".wechat-router-state.json"))
-    processed_keys = load_state(state_path)
 
     new_links = []
     for item in links:

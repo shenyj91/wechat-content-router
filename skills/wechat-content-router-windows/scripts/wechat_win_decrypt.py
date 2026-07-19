@@ -88,6 +88,12 @@ def extract_wechat_key(timeout: int = 30) -> str:
     return key
 
 
+def ensure_wechat_running() -> dict:
+    """确保微信已启动；未启动则自动拉起"""
+    data = _run_bridge("ensure_wechat_running", timeout=15)
+    return data
+
+
 def find_account_dir() -> tuple[str, list[str]]:
     """自动找微信4.x账号目录（兼容旧代码）"""
     data = _run_bridge("find_account_dir", timeout=10)
@@ -98,6 +104,45 @@ def get_sessions(account_dir: str, hex_key: str) -> list[dict]:
     """获取所有会话列表"""
     data = _run_bridge("get_sessions", account_dir, hex_key, timeout=30)
     return data.get("sessions", [])
+
+
+def list_sessions_with_info(account_dir: str, hex_key: str) -> list[dict]:
+    """获取会话列表，并归一化成启动器可直接展示的结构"""
+    sessions = get_sessions(account_dir, hex_key)
+    normalized = []
+    for item in sessions:
+        session_id = (
+            item.get("session_id")
+            or item.get("sessionId")
+            or item.get("userName")
+            or item.get("username")
+            or item.get("talker")
+            or ""
+        )
+        if not session_id:
+            continue
+        display_name = (
+            item.get("display_name")
+            or item.get("displayName")
+            or item.get("nickname")
+            or item.get("remark")
+            or item.get("name")
+            or session_id
+        )
+        is_group = bool(
+            item.get("is_group")
+            or item.get("isGroup")
+            or str(session_id).endswith("@chatroom")
+        )
+        normalized.append(
+            {
+                "session_id": session_id,
+                "display_name": display_name,
+                "is_group": is_group,
+                "raw": item,
+            }
+        )
+    return normalized
 
 
 def get_messages(
@@ -161,6 +206,8 @@ def decrypt_and_get_links(
             "未指定account_dir。请先运行 use_router.py 完成账号选择配置。"
         )
 
+    ensure_wechat_running()
+
     if not key:
         key = extract_wechat_key()
 
@@ -206,3 +253,30 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def decrypt_all_dbs(account_dir: str, hex_key: str) -> str:
+    """批量解密账号目录下所有db，返回解密后目录"""
+    from wcdb_decrypt import decrypt_db
+    import os
+    
+    db_storage = Path(account_dir) / "db_storage"
+    if not db_storage.exists():
+        raise RuntimeError(f"db_storage不存在: {db_storage}")
+    
+    output_dir = Path(account_dir) / "_decrypted"
+    output_dir.mkdir(exist_ok=True)
+    
+    count = 0
+    for db_file in db_storage.rglob("*.db"):
+        rel = db_file.relative_to(db_storage)
+        out_path = output_dir / rel
+        try:
+            decrypt_db(str(db_file), str(out_path), hex_key)
+            count += 1
+        except Exception as e:
+            print(f"跳过 {rel}: {e}")
+    
+    print(f"解密完成: {count}个db文件 → {output_dir}")
+    return str(output_dir)
+
