@@ -61,7 +61,7 @@ description: >
 python3 scripts/use_router.py
 ```
 
-Windows 也可以直接双击：
+Windows 也可以直接打开启动器：
 
 ```text
 START-HERE.bat
@@ -76,7 +76,7 @@ START-HERE.bat
 
 - 当前 skill 安装机制本身没有“安装后立刻自动执行脚本”的钩子
 - 所以最接近“安装后自动进配置”的做法，就是**首次启动时自动进入配置向导**
-- Windows 用户可以直接双击 `START-HERE.bat`
+- Windows 用户可以直接打开 `START-HERE.bat`
 
 首次配置时会依次确定：
 
@@ -107,6 +107,11 @@ python3 scripts/use_router.py
 2. 跑一次微信自动扫描
 3. 按当前配置持续扫描微信
 4. 重新配置
+
+补充：
+
+- 如果你在首次配置里选了“微信自动扫描”，启动后会先自动跑一次，再回到菜单
+- 如果你只想自己点菜单，就选“手动粘贴链接/分享文案”
 
 ### 模式 B：直接导入单条内容
 

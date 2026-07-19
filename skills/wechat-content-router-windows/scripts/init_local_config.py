@@ -761,7 +761,7 @@ def print_config_summary(config: dict) -> None:
     print(f"- 扫描方式：{monitor_text}")
     print("- 微信数据准备：后台自动处理")
     print("\n你后面最常用的启动方式：")
-    print("- 双击 START-HERE.bat")
+    print("- 直接打开 START-HERE.bat")
     print("- 或运行：python scripts/use_router.py")
 
 

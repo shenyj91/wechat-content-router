@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import json
 import re
@@ -84,9 +85,32 @@ def print_summary(config: dict):
     print(f"- 当前绑定微信：{account_text}")
 
 
+def maybe_auto_run(config: dict) -> bool:
+    workflow = config.get("workflow") or {}
+    wechat = config.get("wechat") or {}
+    if workflow.get("default_action") != "wechat_monitor":
+        return False
+    if not wechat.get("enabled"):
+        return False
+
+    print("\n已选择“自动扫描微信”模式，启动后先自动跑一次。")
+    try:
+        print(json.dumps(run_wechat_once(), ensure_ascii=False, indent=2))
+    except Exception as error:
+        print(f"自动扫描失败：{error}")
+    return True
+
+
 def main():
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument("--auto-run", action="store_true", help="启动后若微信自动扫描已启用，则先自动跑一次")
+    args = parser.parse_args()
+
     config = load_config()
     print_summary(config)
+    if args.auto_run and maybe_auto_run(config):
+        return
+    maybe_auto_run(config)
 
     while True:
         print("\n请选择要做什么：")

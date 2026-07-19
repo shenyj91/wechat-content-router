@@ -237,13 +237,13 @@ python3 ~/.codex/skills/wechat-content-router-macos/scripts/init_local_config.py
 python3 ~/.codex/skills/wechat-content-router-macos/scripts/use_router.py
 ```
 
-Windows 版如果是本地目录安装，也可以直接双击：
+Windows 版如果是本地目录安装，直接打开启动器：
 
 ```text
 START-HERE.bat
 ```
 
-macOS 可以直接双击：
+macOS 可以直接打开：
 
 ```text
 START-HERE.command
@@ -271,4 +271,10 @@ python3 scripts/use_router.py
 ```bash
 cd skills/wechat-content-router-windows
 python scripts/use_router.py
+```
+
+Windows 版最省事的入口就是：
+
+```text
+START-HERE.bat
 ```
