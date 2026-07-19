@@ -153,7 +153,8 @@ def main():
             elif item["type"] == "feishu":
                 res = feishu_importer.import_page(item["url"], config=config)
             else:
-                continueimports.append({"type": item["type"], "url": item["url"], "result": res})
+                continue
+            imports.append({"type": item["type"], "url": item["url"], "result": res})
             processed_keys.add(key)
         except Exception as e:
             imports.append({"type": item["type"], "url": item["url"], "error": str(e)})

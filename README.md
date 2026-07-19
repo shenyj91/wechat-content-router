@@ -22,7 +22,7 @@
 - skill 名：`wechat-content-router-windows`
 - 适合：Windows 用户
 - OCR：使用 **PaddleOCR**
-- 状态：已接入 OCR 后端，建议先做本机验证
+- 状态：已接入 OCR 后端，首次调用会自动进入本机配置向导
 
 ---
 
@@ -89,6 +89,12 @@ cp -R skills/wechat-content-router-macos/. ~/.codex/skills/wechat-content-router
 请安装：
 
 - `skills/wechat-content-router-windows`
+
+首次安装后，直接让它进入配置即可：
+
+```text
+开始配置 wechat-content-router-windows
+```
 
 ### 如果你不是装到 Codex
 
@@ -213,6 +219,14 @@ wechat-content-router-skill/
 ```
 
 这样智能体就会直接进入首次配置，而不是先讲说明文档。
+
+Windows 版首次配置时的默认口径：
+
+- 先选“本地 / Obsidian”
+- OCR 默认开启
+- Obsidian 路径优先自动探测，失败再弹目录选择器
+- 微信账号自动识别，不让用户手填 `session.db` / `message_dir` / `db_dir`
+- 如果走微信自动扫描，再确认会话名和轮询方式
 
 ### 如果你现在要把它给别人装
 建议按这条规则理解：

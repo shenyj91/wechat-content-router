@@ -486,6 +486,12 @@ def build_config(
     session_db: str = "",
     message_dir: str = "",
     message_table: str = "",
+    selected_account_wxid: str = "",
+    selected_account_label: str = "",
+    decrypt_workdir: str = "",
+    decrypt_exe: str = "",
+    decrypt_python: str = "",
+    decrypt_script: str = "",
 ) -> dict:
     state_root = vault_root or local_root
     return {

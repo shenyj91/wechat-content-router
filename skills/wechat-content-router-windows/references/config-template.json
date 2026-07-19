@@ -1,9 +1,9 @@
 {
-  "vault_root": "/Users/yourname/Documents/ObsidianVault",
-  "state_file": "/Users/yourname/Documents/ObsidianVault/.wechat-content-router-state.json",
+  "vault_root": "",
+  "state_file": "",
   "storage": {
     "mode": "obsidian",
-    "local_root": "/Users/yourname/Documents/ImportedContent"
+    "local_root": ""
   },
   "settings": {
     "openAfterCreate": false,
@@ -41,12 +41,23 @@
   },
   "wechat": {
     "enabled": false,
-    "session_db": "/absolute/path/to/session.db",
-    "message_dir": "/absolute/path/to/decrypted/message",
+    "account_dir": "",
+    "db_dir": "",
+    "wechat_process": "Weixin.exe",
+    "session_db": "",
+    "message_dir": "",
     "chat_username": "filehelper",
     "message_table": "",
-    "decrypt_workdir": "/absolute/path/to/wechat-decrypt",
-    "decrypt_python": "/absolute/path/to/python3",
-    "decrypt_script": "/absolute/path/to/decrypt_db.py"
+    "selected_account_wxid": "",
+    "selected_account_label": "",
+    "decrypt_workdir": "",
+    "decrypt_exe": "",
+    "decrypt_python": "",
+    "decrypt_script": ""
+  },
+  "workflow": {
+    "default_action": "manual_link",
+    "monitor_mode": "manual",
+    "interval_seconds": 900
   }
 }
