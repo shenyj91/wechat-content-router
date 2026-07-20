@@ -1,29 +1,38 @@
 #!/usr/bin/env python3
 import json
 import importlib.util
+import io
 import sys
 from pathlib import Path
+from contextlib import redirect_stdout
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = SCRIPT_DIR / "config.json"
 
 
-def check_dependencies() -> list[str]:
+def check_dependencies(source_mode: str) -> list[str]:
     import shutil
     import subprocess
     errors = []
-    if not shutil.which("node"):
-        errors.append("Node.js未安装，请先安装：https://nodejs.org/")
-    else:
+    if source_mode == "decrypted_files":
         try:
-            result = subprocess.run(
-                ["node", "-e", "require('koffi'); console.log('ok')"],
-                capture_output=True, text=True, timeout=5
-            )
-            if "ok" not in result.stdout:
-                errors.append("koffi未安装，请在scripts目录运行：npm install koffi")
+            import Crypto.Cipher  # noqa: F401
         except Exception:
-            errors.append("koffi检测失败")
+            errors.append("pycryptodome未安装，请先运行：python -m pip install pycryptodome")
+        return errors
+    if source_mode != "decrypted_files":
+        if not shutil.which("node"):
+            errors.append("Node.js未安装，请先安装：https://nodejs.org/")
+        else:
+            try:
+                result = subprocess.run(
+                    ["node", "-e", "require('koffi'); console.log('ok')"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if "ok" not in result.stdout:
+                    errors.append("koffi未安装，请在scripts目录运行：npm install koffi")
+            except Exception:
+                errors.append("koffi检测失败")
     return errors
 
 
@@ -72,11 +81,6 @@ def load_local_link_importer():
 
 
 def main():
-    dep_errors = check_dependencies()
-    if dep_errors:
-        import sys as _sys, json as _json
-        print(_json.dumps({"status": "dependency_error", "errors": dep_errors}, ensure_ascii=False))
-        _sys.exit(1)
     config = load_config()
     wechat = config.get("wechat") or {}
 
@@ -85,19 +89,42 @@ def main():
         return
 
     source_mode = (wechat.get("source_mode") or "decrypted_files").lower()
+    dep_errors = check_dependencies(source_mode)
+    if dep_errors:
+        import sys as _sys, json as _json
+        print(_json.dumps({"status": "dependency_error", "errors": dep_errors}, ensure_ascii=False))
+        _sys.exit(1)
     state_path = Path(config.get("state_file") or (SCRIPT_DIR / ".wechat-router-state.json"))
     processed_keys = load_state(state_path)
 
     if source_mode == "decrypted_files":
-        if not wechat.get("session_db") or not wechat.get("message_dir"):
+        account_dir = wechat.get("account_dir")
+        if not account_dir:
             print(json.dumps({
-                "status": "decrypted_files_not_configured",
-                "error": "请先在启动器里配置解密后的 session.db 和 message_*.db 目录",
+                "status": "account_not_configured",
+                "error": "未选择微信账号，请先运行 use_router.py 完成账号选择配置",
             }, ensure_ascii=False, indent=2))
             sys.exit(1)
-        importer = load_local_link_importer()
+        decrypt_module = load_importer("wechat_win_decrypt", SCRIPT_DIR / "wechat_win_decrypt.py")
         try:
-            result = importer.collect_recent_messages(config)
+            with redirect_stdout(io.StringIO()):
+                if not wechat.get("_cached_key"):
+                    config["wechat"]["_cached_key"] = decrypt_module.extract_wechat_key()
+                    save_config(config)
+                decrypted = decrypt_module.decrypt_account_dbs(
+                    account_dir=account_dir,
+                    hex_key=config["wechat"]["_cached_key"],
+                )
+            importer = load_local_link_importer()
+            temp_config = {
+                **config,
+                "wechat": {
+                    "session_db": decrypted.get("session_db") or "",
+                    "message_dir": decrypted.get("message_dir") or "",
+                    "chat_username": wechat.get("chat_username") or "filehelper",
+                },
+            }
+            result = importer.collect_recent_messages(temp_config)
         except Exception as e:
             print(json.dumps({
                 "status": "decrypt_failed",

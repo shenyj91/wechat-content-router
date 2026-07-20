@@ -132,6 +132,12 @@ async function main() {
         console.log(JSON.stringify({ success: true, key }))
         break
       }
+      case 'ensure_wechat_running': {
+        const { ensureWeChatRunning } = require('./key-extractor.js')
+        const result = await ensureWeChatRunning()
+        console.log(JSON.stringify({ success: true, ...result }))
+        break
+      }
       case 'get_sessions': {
         const [accountDir, hexKey] = args
         const client = new WcdbClient()

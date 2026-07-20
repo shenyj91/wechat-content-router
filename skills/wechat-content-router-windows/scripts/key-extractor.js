@@ -74,7 +74,7 @@ function resolveProjectRoot() {
   if (process.resourcesPath && existsSync(join(process.resourcesPath, 'resources', 'key'))) {
     return process.resourcesPath
   }
-  // Walk up from this file to find the WxLens project root (where resources/ lives)
+  // Walk up from this file to find the project root (where resources/ lives)
   let dir = __dirname
   for (let i = 0; i < 5; i++) {
     if (existsSync(join(dir, 'resources', 'key'))) return dir
@@ -222,7 +222,7 @@ async function getExeVersion(exePath) {
 async function extractKeyWindows(options = {}) {
   const dllPath = resolveDllPath(options.dllPath)
   if (!dllPath) {
-    throw new Error('wx_key.dll not found. Set --dll-path or WX_KEY_DLL_PATH, or run from WxLens project root.')
+    throw new Error('wx_key.dll not found. Set --dll-path or WX_KEY_DLL_PATH, or run from the project root.')
   }
   log(`DLL path: ${dllPath}`)
 
@@ -604,6 +604,29 @@ async function findWeChatExecutable() {
   return candidates.find(existsSync) || null
 }
 
+async function ensureWeChatRunning() {
+  const candidates = await findWeChatMainProcess()
+  const mainProcesses = candidates.filter(isMainWeChatProcess)
+  if (mainProcesses.length > 0) {
+    return { launched: false, executable: mainProcesses[0].exePath || null }
+  }
+
+  const executable = await findWeChatExecutable()
+  if (!executable) {
+    throw new Error('未找到微信安装位置，请先手动启动微信')
+  }
+
+  log(`正在启动微信: ${executable}`)
+  const child = require('child_process').spawn(executable, [], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: false,
+  })
+  child.unref()
+
+  return { launched: true, executable }
+}
+
 // --- macOS Implementation ---
 
 async function extractKeyMac(options = {}) {
@@ -644,7 +667,7 @@ async function extractKeyMac(options = {}) {
   const timeout = options.timeout || 60000
   log('正在以管理员权限运行密钥提取（需要输入密码）...')
 
-  const script = `do shell script "\\"${helperPath}\\" ${pid} ${timeout}" with administrator privileges with prompt "WxLens 需要管理员权限来提取微信数据库密钥"`
+  const script = `do shell script "\\"${helperPath}\\" ${pid} ${timeout}" with administrator privileges with prompt "本 skill 需要管理员权限来提取微信数据库密钥"`
 
   try {
     const { stdout, stderr } = await execFileAsync('osascript', ['-e', script], { timeout: timeout + 30000 })
@@ -725,7 +748,7 @@ async function extractKeyLinux(options = {}) {
   try {
     const sudo = require('@vscode/sudo-prompt')
     const result = await new Promise((resolve, reject) => {
-      sudo.exec(hookCmd, { name: 'WxLens Key Extractor' }, (error, stdout, stderr) => {
+      sudo.exec(hookCmd, { name: 'Wechat Content Router Key Extractor' }, (error, stdout, stderr) => {
         if (error) reject(error)
         else resolve(stdout + '\n' + stderr)
       })
@@ -789,4 +812,4 @@ async function extractKey(options = {}) {
   }
 }
 
-module.exports = { extractKey, ERROR_CODES, KeyExtractorError }
+module.exports = { extractKey, ensureWeChatRunning, findWeChatExecutable, ERROR_CODES, KeyExtractorError }

@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
-Windows微信4.x解密模块
-通过Node.js桥接脚本调用WxLens的解密能力
+Windows 微信 4.x 解密与导入辅助模块。
+
+默认走纯 Python 的 WCDB 解密路径；旧的 live_wcdb 桥接仍保留给实验模式。
 """
 from __future__ import annotations
 
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import importlib.util
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -43,6 +46,111 @@ def _run_bridge(command: str, *args: str, timeout: int = 60) -> dict:
     if not data.get("success"):
         raise RuntimeError(f"Bridge错误: {data.get('error', '未知错误')}")
     return data
+
+
+def _load_wcdb_decrypt_module():
+    spec = importlib.util.spec_from_file_location("wechat_wcdb_decrypt", SCRIPT_DIR / "wcdb_decrypt.py")
+    if not spec or not spec.loader:
+        raise RuntimeError("无法加载 wcdb_decrypt.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _resolve_account_root(account_dir: str) -> Path:
+    root = Path(account_dir).expanduser().resolve()
+    db_storage = root / "db_storage"
+    if db_storage.exists():
+        return root
+    if root.name.lower() == "db_storage" and root.parent.exists():
+        return root.parent.resolve()
+    raise RuntimeError(f"未找到 db_storage: {root}")
+
+
+def decrypt_account_dbs(account_dir: str, hex_key: str, output_root: str | None = None, clean: bool = True) -> dict:
+    """把账号目录下的 WCDB 数据库解密到一个本地缓存目录。"""
+    account_root = _resolve_account_root(account_dir)
+    db_storage = account_root / "db_storage"
+    if not db_storage.exists():
+        raise RuntimeError(f"db_storage不存在: {db_storage}")
+
+    decrypt_mod = _load_wcdb_decrypt_module()
+
+    decrypted_root = Path(output_root).expanduser().resolve() if output_root else (account_root / "_decrypted")
+    if clean and decrypted_root.exists():
+        shutil.rmtree(decrypted_root, ignore_errors=True)
+    decrypted_root.mkdir(parents=True, exist_ok=True)
+
+    count = 0
+    for db_file in sorted(db_storage.rglob("*.db")):
+        rel = db_file.relative_to(db_storage)
+        out_path = decrypted_root / rel
+        try:
+            decrypt_mod.decrypt_db(str(db_file), str(out_path), hex_key)
+            count += 1
+        except Exception as e:
+            print(f"跳过 {rel}: {e}")
+
+    session_db = decrypted_root / "session" / "session.db"
+    message_dir = decrypted_root / "message"
+    return {
+        "account_root": str(account_root),
+        "db_storage": str(db_storage),
+        "decrypted_root": str(decrypted_root),
+        "session_db": str(session_db) if session_db.exists() else "",
+        "message_dir": str(message_dir) if message_dir.exists() else "",
+        "decrypted_count": count,
+    }
+
+
+def _load_collect_recent_messages():
+    importer = importlib.util.spec_from_file_location(
+        "wechat_router_local_links",
+        SCRIPT_DIR / "import_latest_wechat_links.py",
+    )
+    if not importer or not importer.loader:
+        raise RuntimeError("无法加载 import_latest_wechat_links.py")
+    module = importlib.util.module_from_spec(importer)
+    sys.modules[importer.name] = module
+    importer.loader.exec_module(module)
+    return module
+
+
+def list_sessions_from_decrypted_files(account_dir: str, hex_key: str, output_root: str | None = None) -> list[dict]:
+    """从解密后的 session.db 里列出会话。"""
+    decrypted = decrypt_account_dbs(account_dir, hex_key, output_root=output_root)
+    session_db = decrypted.get("session_db")
+    if not session_db:
+        return []
+    import sqlite3
+
+    session_path = Path(session_db)
+    conn = sqlite3.connect(session_path)
+    try:
+        rows = conn.execute(
+            "select username, last_timestamp from SessionTable order by last_timestamp desc"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    sessions = []
+    for username, last_timestamp in rows:
+        username = str(username or "").strip()
+        if not username:
+            continue
+        sessions.append(
+            {
+                "session_id": username,
+                "display_name": username,
+                "is_group": username.endswith("@chatroom"),
+                "raw": {
+                    "username": username,
+                    "last_timestamp": int(last_timestamp or 0),
+                },
+            }
+        )
+    return sessions
 
 
 def list_all_accounts() -> list[dict]:
@@ -199,8 +307,9 @@ def decrypt_and_get_links(
     limit: int = 50,
     key: str | None = None,
     account_dir: str | None = None,
+    output_root: str | None = None,
 ) -> dict:
-    """一键完成：账号目录 → 提取密钥 → 读取链接"""
+    """一键完成：账号目录 → 提取密钥 → 解密数据库 → 读取链接"""
     if not account_dir:
         raise RuntimeError(
             "未指定account_dir。请先运行 use_router.py 完成账号选择配置。"
@@ -211,8 +320,22 @@ def decrypt_and_get_links(
     if not key:
         key = extract_wechat_key()
 
+    print("正在解密微信数据库...")
+    decrypted = decrypt_account_dbs(account_dir, key, output_root=output_root)
+    temp_config = {
+        "state_file": "",
+        "wechat": {
+            "session_db": decrypted.get("session_db") or "",
+            "message_dir": decrypted.get("message_dir") or "",
+            "chat_username": session_id,
+        },
+    }
+    if not temp_config["wechat"]["session_db"] or not temp_config["wechat"]["message_dir"]:
+        raise RuntimeError("解密后的 session.db 或 message_*.db 目录不存在")
+
     print(f"正在读取会话 [{session_id}] 的最近消息...")
-    links = get_recent_links(account_dir, key, session_id, limit)
+    collect_module = _load_collect_recent_messages()
+    links = collect_module.collect_recent_messages(temp_config)
     print(f"找到 {len(links)} 条链接")
 
     return {
@@ -220,6 +343,9 @@ def decrypt_and_get_links(
         "key": key,
         "session_id": session_id,
         "links": links,
+        "decrypted_root": decrypted.get("decrypted_root") or "",
+        "session_db": decrypted.get("session_db") or "",
+        "message_dir": decrypted.get("message_dir") or "",
     }
 
 
@@ -279,4 +405,3 @@ def decrypt_all_dbs(account_dir: str, hex_key: str) -> str:
     
     print(f"解密完成: {count}个db文件 → {output_dir}")
     return str(output_dir)
-

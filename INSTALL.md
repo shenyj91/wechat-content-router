@@ -23,6 +23,12 @@
 python3 -m pip install browser-cookie3 requests lxml zstandard
 ```
 
+如果要启用 Windows 版内置 WCDB 解密，再装：
+
+```bash
+python -m pip install pycryptodome
+```
+
 如果你要启用“公众号浏览器渲染 PDF 导出”，还要安装 Node.js 依赖：
 
 ### macOS
@@ -160,7 +166,7 @@ python skills/wechat-content-router-windows/scripts/init_local_config.py
 
 - 保存到本地还是 Obsidian
 - 路径是什么
-- 要不要开 OCR
+- OCR 默认开启，不再单独询问
 - 手动贴链接还是自动扫微信
 - 如果自动扫微信：固定文件传输助手，还是固定某个聊天对象
 - 要不要间隔扫描
@@ -200,22 +206,12 @@ python3 ~/.codex/skills/wechat-content-router-macos/scripts/init_local_config.py
 
 ## 六、如果你要走微信自动路由
 
-还要补这些配置到：
+启动器会自动完成账号识别和 WCDB 解密；你只需要在首次配置时选好：
 
-```text
-~/.codex/skills/wechat-content-router-macos/scripts/config.json
-```
-
-要补的字段：
-
-- `wechat.enabled`
-- `wechat.session_db`
-- `wechat.message_dir`
-- `wechat.chat_username`
-- `wechat.message_table`
-- `wechat.decrypt_workdir`
-- `wechat.decrypt_python`
-- `wechat.decrypt_script`
+- 保存到哪里
+- 绑定哪个微信账号
+- 监控哪个会话
+- 轮询方式
 
 把：
 

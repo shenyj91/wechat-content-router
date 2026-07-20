@@ -66,8 +66,24 @@ def run_wechat_once():
         capture_output=True,
         text=True,
     )
+    raw_output = (result.stdout or "").strip()
+    if raw_output:
+        try:
+            payload = json.loads(raw_output)
+            if isinstance(payload, dict) and payload.get("status") == "decrypt_failed":
+                error_text = str(payload.get("error") or "")
+                if "SecurityStatus:2" in error_text or "wcdb_init" in error_text:
+                    raise RuntimeError("微信自动扫描不可用：WCDB 安全保护拦住了当前环境，先用手动粘贴链接模式。")
+                raise RuntimeError(error_text or "微信扫描失败")
+            return payload
+        except json.JSONDecodeError:
+            pass
     if result.returncode != 0:
-        raise RuntimeError((result.stderr or result.stdout or "").strip() or "微信扫描失败")
+        stderr = (result.stderr or "").strip()
+        stdout = raw_output
+        if "SecurityStatus:2" in stderr or "SecurityStatus:2" in stdout or "wcdb_init" in stderr or "wcdb_init" in stdout:
+            raise RuntimeError("微信自动扫描不可用：WCDB 安全保护拦住了当前环境，先用手动粘贴链接模式。")
+        raise RuntimeError(stderr or stdout or "微信扫描失败")
     return json.loads(result.stdout)
 
 
@@ -101,6 +117,19 @@ def maybe_auto_run(config: dict) -> bool:
     return True
 
 
+def maybe_launch_wechat(config: dict) -> None:
+    wechat = config.get("wechat") or {}
+    if not wechat.get("enabled"):
+        return
+    try:
+        decrypt_module = load_importer("wechat_win_decrypt", SCRIPT_DIR / "wechat_win_decrypt.py")
+        result = decrypt_module.ensure_wechat_running()
+        if result.get("launched"):
+            print("已自动拉起微信。")
+    except Exception as error:
+        print(f"微信自动拉起失败：{error}")
+
+
 def main():
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("--auto-run", action="store_true", help="启动后若微信自动扫描已启用，则先自动跑一次")
@@ -108,6 +137,7 @@ def main():
 
     config = load_config()
     print_summary(config)
+    maybe_launch_wechat(config)
     if args.auto_run and maybe_auto_run(config):
         return
     maybe_auto_run(config)
@@ -171,15 +201,6 @@ def main():
             continue
         print("输入不对，请重新选。")
 
-
-if __name__ == "__main__":
-    try:
-        main()
-    except Exception as error:
-        print(f"ERROR: {error}", file=sys.stderr)
-        sys.exit(1)
-
-
 def select_session(config: dict):
     wechat = config.get("wechat") or {}
     account_dir = wechat.get("account_dir")
@@ -226,3 +247,11 @@ def select_session(config: dict):
         else:
             print(f"已选择：{raw}")
             return raw
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        sys.exit(1)
