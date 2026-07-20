@@ -122,7 +122,8 @@ class WcdbClient {
   _decodeJsonPtr(ptr) {
     if (!ptr) return null
     try {
-      return this.koffi.decode(ptr, 'char', -1)
+      // 标准 koffi 写法：'char*' 按 null 结尾解码 C 字符串（UTF-8 JSON）
+      return this.koffi.decode(ptr, 'char*')
     } catch {
       return null
     }
@@ -438,7 +439,7 @@ class WcdbClient {
         const client = net.createConnection(pipePath, () => {})
         let buffer = ''
         client.on('data', (data) => {
-          buffer += data.toString('utf8').replace(/ /g, '\n').replace(/}\s*{/g, '}\n{')
+          buffer += data.toString('utf8').replace(/\x00/g, '\n').replace(/}\s*{/g, '}\n{')
           const lines = buffer.split(/\r?\n/)
           buffer = lines.pop() || ''
           for (const line of lines) {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import json
 import re
@@ -16,6 +17,24 @@ CONFIG_PATH = SCRIPT_DIR / "config.json"
 XHS_URL_RE = re.compile(r"https?://(?:www\.)?(?:xiaohongshu\.com|xhslink\.com)/[^\s<>\"]+")
 MP_URL_RE = re.compile(r"https?://mp\.weixin\.qq\.com/[^\s<>\"]+")
 FEISHU_URL_RE = re.compile(r"https?://(?:[\w-]+\.)?feishu\.cn/(?:wiki|docx)/[^\s<>\"]+")
+
+
+def ensure_python_deps():
+    """首次运行若缺少 Python 依赖，自动 pip 安装，保证干净克隆也能直接跑。"""
+    required = ["requests", "lxml", "browser_cookie3", "zstandard"]
+    missing = []
+    for mod in required:
+        try:
+            importlib.import_module(mod)
+        except ImportError:
+            missing.append(mod)
+    if not missing:
+        return
+    req_path = SCRIPT_DIR / "requirements.txt"
+    if not req_path.exists():
+        raise RuntimeError(f"缺少依赖 {missing}，且未找到 requirements.txt（{req_path}）")
+    print(f"[bootstrap] 缺少 Python 依赖 {missing}，正在安装…", file=sys.stderr)
+    subprocess.run([sys.executable, "-m", "pip", "install", "-r", str(req_path)], check=True)
 
 
 def load_importer(module_name: str, script_path: Path):
@@ -38,15 +57,17 @@ def load_config():
     return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 
 
-def detect_type(raw_text: str) -> str:
+def detect_type_and_url(raw_text: str) -> tuple[str, str]:
     for route_type, pattern in (("xhs", XHS_URL_RE), ("mp", MP_URL_RE), ("feishu", FEISHU_URL_RE)):
-        if pattern.search(raw_text or ""):
-            return route_type
-    return ""
+        match = pattern.search(raw_text or "")
+        if match:
+            return route_type, match.group(0).replace("&amp;", "&")
+    return "", ""
 
 
 def import_manual(raw_text: str):
-    route_type = detect_type(raw_text)
+    ensure_python_deps()
+    route_type, url = detect_type_and_url(raw_text)
     if not route_type:
         raise RuntimeError("没识别出支持的链接类型，目前支持：小红书 / 公众号 / 飞书。")
     if route_type == "xhs":
@@ -54,9 +75,9 @@ def import_manual(raw_text: str):
         return {"type": route_type, "result": importer.import_note(raw_text)}
     if route_type == "mp":
         importer = load_importer("router_mp", SCRIPT_DIR / "import_wechat_mp_article.py")
-        return {"type": route_type, "result": importer.import_article(raw_text)}
+        return {"type": route_type, "result": importer.import_article(url)}
     importer = load_importer("router_feishu", SCRIPT_DIR / "import_feishu_page.py")
-    return {"type": route_type, "result": importer.import_page(raw_text)}
+    return {"type": route_type, "result": importer.import_page(url)}
 
 
 def run_wechat_once():
@@ -83,6 +104,7 @@ def print_summary(config: dict):
 
 def main():
     config = load_config()
+    ensure_python_deps()
     print_summary(config)
 
     while True:

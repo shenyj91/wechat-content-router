@@ -41,12 +41,14 @@
   },
   "wechat": {
     "enabled": false,
-    "session_db": "/absolute/path/to/session.db",
-    "message_dir": "/absolute/path/to/decrypted/message",
     "chat_username": "filehelper",
+    "message_dir": "/absolute/path/to/decrypted/message",
+    "session_db": "",
     "message_table": "",
-    "decrypt_workdir": "/absolute/path/to/wechat-decrypt",
-    "decrypt_python": "/absolute/path/to/python3",
-    "decrypt_script": "/absolute/path/to/decrypt_db.py"
+    "account_dir": "",
+    "node_bin": "",
+    "decrypt_python": "",
+    "decrypt_script": "",
+    "decrypt_workdir": ""
   }
 }

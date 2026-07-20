@@ -78,8 +78,9 @@ def normalize_state(state: dict) -> dict[str, list[str]]:
 
 def collect_recent_messages(config: dict, limit_per_db: int = 50) -> list[dict]:
     wechat = config.get("wechat") or {}
-    session_db = Path(wechat["session_db"])
     message_dir = Path(wechat["message_dir"])
+    # session_db 缺省时回退到 <message_dir>/session.db（一键解密桥的落库位置）
+    session_db = Path(wechat.get("session_db") or str(message_dir / "session.db"))
     username = wechat["chat_username"]
     table_name = wechat.get("message_table") or f"Msg_{hashlib.md5(username.encode()).hexdigest()}"
 

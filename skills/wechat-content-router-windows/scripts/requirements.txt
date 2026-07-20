@@ -1,0 +1,4 @@
+requests>=2.31
+lxml>=4.9
+browser_cookie3>=0.19
+zstandard>=0.22

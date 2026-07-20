@@ -8,3 +8,11 @@ __pycache__/
 .env
 .venv/
 venv/
+
+# 依赖（跨平台原生模块，不进仓库，首次运行由 launch-viewer 自动安装）
+node_modules/
+
+# viewer 本地运行状态（密钥缓存、连接状态等）
+.viewer_status/
+.viewer_key*
+.viewer_key.json
