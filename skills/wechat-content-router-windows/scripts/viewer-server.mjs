@@ -14,7 +14,7 @@ import { fileURLToPath } from 'url'
 import { dirname, join, basename, resolve } from 'path'
 import { existsSync, readdirSync, statSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { homedir } from 'os'
-import { spawn } from 'child_process'
+import { spawn, spawnSync } from 'child_process'
 import http from 'http'
 
 const require = createRequire(import.meta.url)
@@ -36,7 +36,18 @@ try {
 }
 
 function pythonBin() {
-  return process.env.VIEWER_PYTHON || 'python3'
+  if (process.env.VIEWER_PYTHON) return process.env.VIEWER_PYTHON
+  // 跨平台探测：Windows 上 Python 启动器通常是 `python`，macOS/Linux 通常是 `python3`
+  for (const cand of ['python3', 'python']) {
+    try {
+      const r = spawnSync(cand, ['--version'], { stdio: 'ignore', timeout: 5000 })
+      if (r.error && r.error.code === 'ENOENT') continue
+      return cand
+    } catch {
+      continue
+    }
+  }
+  return 'python3' // 兜底（缺失时会给出清晰报错）
 }
 
 // 调用 viewer_query.py 子命令，解析 stdout 的 JSON
