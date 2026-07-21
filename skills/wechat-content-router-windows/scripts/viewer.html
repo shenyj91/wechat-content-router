@@ -137,8 +137,12 @@
   .key-card textarea:focus { border-color: var(--accent); }
   .key-actions { display: flex; gap: 10px; margin-top: 14px; }
   .key-actions .btn { flex: 1; }
-  .key-err { color: var(--error); font-size: 12px; margin-top: 10px; min-height: 16px; }
+  .key-err { color: var(--error); font-size: 12.5px; margin: 10px 0; line-height: 1.6; white-space: pre-wrap; }
   .key-hint { font-size: 11px; color: var(--text-faint); margin-top: 12px; line-height: 1.5; }
+  .key-adv { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
+  .key-adv summary { cursor: pointer; font-size: 12.5px; color: var(--text-muted); font-weight: 600; user-select: none; }
+  .key-adv textarea { margin-top: 10px; }
+  .key-card p code, .key-hint code, .key-adv p code { background: #f0f0f0; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -179,15 +183,22 @@
 
 <div class="key-overlay" id="keyOverlay">
   <div class="key-card">
-    <h3>需要数据库密钥</h3>
-    <p>本查看器只读取、不修改任何微信数据。请粘贴微信数据库的 64 位十六进制密钥（由密钥提取工具获得），或点击“自动提取”（需微信正在运行且已登录）。</p>
-    <textarea id="keyInput" placeholder="例如：a1b2c3...（64 位十六进制）"></textarea>
-    <div class="key-actions">
-      <button class="btn btn-ghost" id="btnAutoExtract">自动提取</button>
-      <button class="btn btn-primary" id="btnConnect">连接</button>
-    </div>
+    <h3>需要连接微信数据库</h3>
+    <p>本查看器只读取、不修改任何微信数据。密钥由本地 <code>wx_key.dll</code> <b>自动</b>从正在运行的微信中提取，<b>你无需手动输入任何密钥</b>。</p>
     <div class="key-err" id="keyErr"></div>
-    <div class="key-hint">密钥仅保存在本地 <code>.viewer_key.json</code>，不会上传。</div>
+    <div class="key-actions">
+      <button class="btn btn-primary" id="btnAutoExtract">自动提取密钥 / 重试</button>
+    </div>
+    <details class="key-adv">
+      <summary>高级：手动粘贴密钥（仅开发者调试）</summary>
+      <p class="key-hint">普通用户不需要此步骤。64 位十六进制密钥由密钥提取工具产出，自动保存在本地 <code>.viewer_key.json</code>，不会上传。</p>
+      <textarea id="keyInput" placeholder="例如：a1b2c3...（64 位十六进制）"></textarea>
+      <div class="key-actions">
+        <button class="btn btn-primary" id="btnConnect">连接</button>
+      </div>
+      <div class="key-err" id="keyErrManual"></div>
+    </details>
+    <div class="key-hint">前提：微信已启动并登录；且已执行 <code>npm install</code>（安装 koffi）。自动提取失败请查看终端日志。</div>
   </div>
 </div>
 
@@ -225,15 +236,51 @@ function escapeHtml(s) {
 
 // ── 初始化 ──
 async function init() {
+  showLoading('正在准备…')
   try {
     const st = await api('/api/status')
     if (st.ok && st.data.connected) {
       loadSessions('all')
-    } else {
-      keyOverlay.classList.add('visible')
+      return
     }
+    // 未连接 → 自动提取（端用户唯一可行路径，无需手动粘贴任何密钥）
+    await autoExtractOnLoad()
   } catch (e) {
-    keyOverlay.classList.add('visible')
+    showKeyPanel(`服务未响应：${e.message}`, true)
+  }
+}
+
+function showLoading(text) {
+  keyOverlay.classList.remove('visible')
+  sessionList.innerHTML = `<div class="loading"><span class="spinner"></span> ${escapeHtml(text)}</div>`
+}
+
+function showKeyPanel(errorMsg, canRetry) {
+  keyOverlay.classList.add('visible')
+  const errEl = $('keyErr')
+  if (errorMsg) {
+    errEl.textContent = errorMsg
+    errEl.style.display = 'block'
+  } else {
+    errEl.textContent = ''
+    errEl.style.display = 'none'
+  }
+  $('btnAutoExtract').style.display = canRetry ? '' : 'none'
+  $('keyInput').value = ''
+  $('keyErrManual').textContent = ''
+}
+
+async function autoExtractOnLoad() {
+  showLoading('正在自动提取微信密钥（需微信已运行且登录）…')
+  try {
+    const r = await api('/api/auto-extract', { method: 'POST' })
+    if (r.ok) {
+      loadSessions('all')
+      return
+    }
+    showKeyPanel(r.error, true)
+  } catch (e) {
+    showKeyPanel(`网络请求失败：${e.message}（请查看终端日志）`, true)
   }
 }
 
@@ -408,9 +455,9 @@ sessionTabs.forEach(tab => {
 // ── 密钥面板 ──
 $('btnConnect').addEventListener('click', async () => {
   const key = $('keyInput').value.trim()
-  $('keyErr').textContent = ''
+  $('keyErrManual').textContent = ''
   if (!/^[0-9a-fA-F]{64}$/.test(key)) {
-    $('keyErr').textContent = '密钥格式不正确，应为 64 位十六进制字符。'
+    $('keyErrManual').textContent = '密钥格式不正确，应为 64 位十六进制字符。'
     return
   }
   try {
@@ -419,21 +466,12 @@ $('btnConnect').addEventListener('click', async () => {
     keyOverlay.classList.remove('visible')
     loadSessions('all')
   } catch (e) {
-    $('keyErr').textContent = e.message
+    $('keyErrManual').textContent = e.message
   }
 })
 
-$('btnAutoExtract').addEventListener('click', async () => {
-  $('keyErr').textContent = '正在尝试自动提取（需微信运行且已登录）…'
-  try {
-    const r = await api('/api/auto-extract', { method: 'POST' })
-    if (!r.ok) throw new Error(r.error)
-    keyOverlay.classList.remove('visible')
-    loadSessions('all')
-  } catch (e) {
-    const msg = e.message || '网络请求失败（服务端可能未响应），请检查终端日志或手动粘贴密钥'
-    $('keyErr').textContent = msg
-  }
+$('btnAutoExtract').addEventListener('click', () => {
+  autoExtractOnLoad()
 })
 
 init()

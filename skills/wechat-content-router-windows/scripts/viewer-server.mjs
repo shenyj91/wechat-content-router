@@ -362,7 +362,7 @@ async function tryAutoExtract(timeoutMs = 30000) {
   mkdirSync(STATUS_DIR, { recursive: true })
   // 用 Promise.race 防止 osascript/提权挂死导致服务端卡死 → 前端 Failed to fetch
   const timer = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('自动提取超时（可能需要关闭 SIP 或手动粘贴密钥）')), timeoutMs)
+    setTimeout(() => reject(new Error('自动提取超时，请确认微信已运行并登录，且依赖已安装（scripts 目录执行 npm install）')), timeoutMs)
   )
   try {
     return await Promise.race([extractKey({ statusDir: STATUS_DIR, timeout: Math.min(timeoutMs, 60000) }), timer])
@@ -480,20 +480,31 @@ async function handleApi(req, res, url) {
       }
 
       case '/api/auto-extract': {
-        // 用 try/catch + finally 确保永远返回 JSON（防止前端 Failed to fetch）
+        // 用 try/catch 确保永远返回 JSON（防止前端 Failed to fetch）
+        // 注意：普通用户只走自动提取；”手动粘贴 64 位 hex“ 仅作为隐藏的开发者调试入口，
+        // 不能出现在常规错误提示里（客户并不知道那段密钥）。
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
         let result
         try {
-          const key = await tryAutoExtract(25000)
-          if (!key) {
-            result = JSON.stringify({ ok: false, error: '自动取密钥不可用。可能原因：①微信未运行/未登录 ②macOS 需关闭 SIP（重启进恢复模式 → csrutil disable）③xkey_helper 缺失或无管理员授权。请手动粘贴 64 位 hex 密钥。' })
+          if (!extractKey) {
+            result = JSON.stringify({ ok: false, error: '自动取密钥模块未加载：缺少依赖 koffi。请在 scripts 目录执行 `npm install` 安装后再试（macOS 还需关闭 SIP）。' })
           } else {
-            saveCachedKey(key, accountDir)
-            try {
-              await connect(key, accountDir)
-              result = JSON.stringify({ ok: true, accountDir })
-            } catch (e) {
-              result = JSON.stringify({ ok: false, error: `密钥已获取但连接数据库失败: ${e.message}` })
+            const wechatRunning = await withTimeout(isWeChatRunning(), 1500, false)
+            if (!wechatRunning) {
+              result = JSON.stringify({ ok: false, error: '未检测到正在运行的微信。请先启动微信并登录，然后点击“自动提取/重试”。' })
+            } else {
+              const key = await tryAutoExtract(25000)
+              if (!key) {
+                result = JSON.stringify({ ok: false, error: '自动取密钥失败。最可能的原因：①微信未登录（请登录后重试）②macOS 需关闭 SIP（重启进恢复模式 → csrutil disable）③管理员/提权授权被取消。请排查后重试，详情见终端日志。' })
+              } else {
+                saveCachedKey(key, accountDir)
+                try {
+                  await connect(key, accountDir)
+                  result = JSON.stringify({ ok: true, accountDir })
+                } catch (e) {
+                  result = JSON.stringify({ ok: false, error: `密钥已获取但连接数据库失败: ${e.message}` })
+                }
+              }
             }
           }
         } catch (e) {
@@ -628,7 +639,7 @@ server.listen(PORT, '127.0.0.1', async () => {
   try {
     const ok = await ensureConnected()
     if (ok) console.log(`  ✓ 已连接: ${accountDir}`)
-    else if (needKey) console.log('  • 需要密钥：打开页面后粘贴 64 位 hex 密钥，或点击“自动提取”。')
+    else if (needKey) console.log('  • 需要密钥：打开页面后会自动提取（需微信运行并登录）；若失败请按页面提示排查。')
     else console.log('  • 未连接:', lastError)
   } catch (e) {
     console.log('  • 初始化:', e.message)

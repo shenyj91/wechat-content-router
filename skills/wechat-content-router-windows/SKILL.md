@@ -160,7 +160,7 @@ python3 scripts/run_wechat_router_pipeline.py
 **特性**
 - 纯只读：只 SELECT，绝不写入 / 删除 / 发送任何微信数据。
 - 自动发现 Windows 微信 4.x 账号目录（`xwechat_files/<账号>/db_storage`）。
-- 微信运行且已登录时，可一键“自动提取”数据库密钥（仍走 `wx_key.dll`）；否则在页面粘贴 64 位 hex 密钥，或在 config 里配置 `key_file` 手动指定密钥文件。
+- 微信运行且已登录时，查看器**打开即自动提取**数据库密钥（走 `wx_key.dll`），**普通用户无需手动输入任何密钥**。仅在开发者调试时，才可在页面折叠的「高级」区手动粘贴密钥，或在 config 里配置 `key_file` 指定密钥文件（`key_file` 也是由提取工具生成的，不是让人手敲的 64 位 hex）。
 - 会话列表（全部 / 私聊 / 群聊）+ 消息气泡（自己靠右、对方靠左）+ 关键词搜索。
 
 **启动（二选一）**
@@ -169,12 +169,11 @@ python3 scripts/run_wechat_router_pipeline.py
 
 首次运行请先装依赖（**两条都要**）：
 - Python 依赖：`cd scripts && pip install -r requirements.txt`（需要 `cryptography` 与 `zstandard`）。
-- Node 依赖（自动提取密钥用）：`cd scripts && npm install`（安装 `koffi`，`key-extractor.js` 通过它加载 `wx_key.dll`）。
-- 若不想装 Node 依赖，可跳过自动提取：页面手动粘贴 64 位 hex 密钥，或在 config 配 `key_file` 指定密钥文件。
+- Node 依赖（**必装**，自动提取密钥用）：`cd scripts && npm install`（安装 `koffi`，`key-extractor.js` 通过它加载 `wx_key.dll`）。若没装 koffi，自动提取会直接报错“缺少依赖”，此时应回退去装依赖，而**不是**让客户手动粘贴密钥（普通用户根本没有那段 64 位 hex）。
 
 **前提**
 - 需安装 Node.js（https://nodejs.org）与 Python 3（含 `cryptography`、`zstandard`）。
-- 解密与查询已完全脱离 WxLens 原生库，不再因 DLL（`wcdb_api.dll`/`WCDB.dll`）崩溃而失败；Windows 端自动提取密钥**无需关闭 SIP**（通过独立的 `wx_key.dll` 注入，它不触发那个反盗用崩溃）。若自动提取不可用，手动粘贴 / 配置 64 位 hex 密钥即可。
+- 解密与查询已完全脱离 WxLens 原生库，不再因 DLL（`wcdb_api.dll`/`WCDB.dll`）崩溃而失败；Windows 端自动提取密钥**无需关闭 SIP**（通过独立的 `wx_key.dll` 注入，它不触发那个反盗用崩溃）。若自动提取失败，请按页面提示排查（微信是否在运行并登录 / 是否执行过 `npm install` / macOS 是否关 SIP），**不要**让客户去手动粘贴 64 位 hex 密钥——普通用户没有那段密钥，那只是开发者调试入口。
 
 ## 输出要求
 
