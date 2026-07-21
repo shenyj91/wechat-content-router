@@ -499,14 +499,15 @@ def interactive_config() -> dict:
         wechat_source_mode = "decrypted_files"
 
         wechat_entry = prompt_choice(
-            "你要固定监控哪个微信入口？",
-            [("filehelper", "文件传输助手（推荐）"), ("custom", "指定某个聊天对象")],
+            "链接从哪个微信入口读取？（你通常会把要整理的内容转发到文件传输助手）",
+            [("filehelper", "文件传输助手（推荐，读你转发进来的链接）"), ("custom", "指定某个具体聊天对象")],
             default_key="filehelper",
         )
         if wechat_entry == "custom":
-            chat_username = prompt_text("请输入要固定监控的微信会话名")
+            chat_username = prompt_text("请输入要固定监控的微信会话名（请确认拼写无误）")
         else:
             chat_username = "filehelper"
+            print("已确认：从你的【文件传输助手】读取链接。")
 
         monitor_mode = prompt_choice(
             "自动扫描要怎么跑？",
@@ -532,11 +533,20 @@ def interactive_config() -> dict:
 
             if accounts:
                 if len(accounts) == 1:
-                    selected = accounts[0]
-                    account_dir = selected["account_dir"]
-                    selected_account_wxid = selected["wxid"]
-                    selected_account_label = selected["wxid"]
-                    print(f"\n已自动绑定微信账号：{selected_account_label}")
+                    only = accounts[0]
+                    print(f"\n本机只检测到这 1 个微信账号：{only['wxid']} ({only['account_dir']})")
+                    if prompt_yes_no("确认就用这个微信账号吗？", default=True):
+                        selected = only
+                    else:
+                        selected = None
+                        account_dir = prompt_path("请选择微信账号目录（包含 db_storage）", kind="dir")
+                        selected_account_wxid = Path(account_dir).name
+                        selected_account_label = selected_account_wxid
+                    if selected is not None:
+                        account_dir = selected["account_dir"]
+                        selected_account_wxid = selected["wxid"]
+                        selected_account_label = selected["wxid"]
+                        print(f"已绑定微信账号：{selected_account_label}")
                 else:
                     print("\n已识别到多个微信账号，请选一个作为固定绑定账号：")
                     options = [(item["account_dir"], f"{item['wxid']} ({item['account_dir']})") for item in accounts]

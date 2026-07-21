@@ -19,11 +19,33 @@ description: >
 1. 不要先讲大段说明
 2. 不要在聊天里替用户填写路径，也不要把“其他补充...”当成真实文件夹选择
 3. 应自动切到本地辅助配置脚本，不再在聊天里代填路径
-4. 说明真实配置向导会先让用户选“本地 / Obsidian”，默认 OCR 开启，Obsidian 路径会先自动探测，不行再用目录选择器兜底
+4. 说明真实配置向导会先让用户选“本地 / Obsidian”，默认 OCR 开启；Obsidian 路径会先**探测出候选**，但**必须让客户确认**后才写入（见下文「开工前必须向客户确认的三件事」）
 5. 如果用户选择微信自动扫描，先让他选数据源：
    - 内置 WCDB 解密并导入（默认、推荐）：自动解密 `session.db`（会话列表）、`contact.db`（联系人），零原生依赖、稳定可用
    - Frida 内存提取（消息内容专用）：当 `message_0.db` 等消息库在磁盘上大量页解密失败（新微信版本常见）时，**唯一能拿到聊天里链接/内容的路径**——直接扫描 WeChat 进程内存中的明文 SQLite 页。需 WeChat 在运行、已装 `frida`。
 6. 只有用户已经完成本地配置后，再进入日常使用
+
+## 开工前必须向客户确认的三件事（强制）
+
+> **任何**一次「从微信取内容 → 落到某处」的操作（首次配置、日常扫描、手动导入都一样），都必须先和客户对齐下面三点。**禁止**靠"自动探测"直接替客户定下来——探测只用来给出候选默认值，最终要客户明确说"可以 / 就是这个 / 换一个"。探测到的值不写进 `config.json` 之前，必须先问。
+
+1. **存到哪里（落盘位置）**
+   - 先探测候选：`python -c "import init_local_config as c; print(c.detect_obsidian_vaults())"` 找 Obsidian vault；本地默认候选 `~/Documents/ImportedContent`。
+   - 把候选读出来展示给客户，问：**"存到这里 OK 吗？还是要换路径？"**
+   - 客户确认/给出的路径写入 `storage.mode`（`obsidian` / `local`）+ `vault_root` / `local_root`，并回显确认。
+
+2. **确认用哪个微信（账号）**
+   - 列出本机所有微信账号：`python -c "import wechat_win_decrypt as w; print(w.list_all_accounts())"`（返回每个 `xwechat_files/<账号>` 的 `account_dir` / `wxid` / `mtime`）。
+   - **多账号时，必须让客户从列表里挑一个**，绝不能默认绑"最近活跃"那个就开跑。
+   - **单账号时也要展示出来问："就是这一个微信账号对吧？"** 让客户确认。
+   - 选中的 `account_dir` 写入 `wechat.account_dir`，`wxid` 写入 `wechat.selected_account_wxid` / `selected_account_label`。
+
+3. **确认数据源是客户的「文件传输助手」**
+   - 默认从**文件传输助手**（会话 id = `filehelper`）读取链接——因为客户通常是把链接转发到文件传输助手再统一路由。
+   - 必须问客户：**"从你的【文件传输助手】读链接，对吗？还是想固定某个具体聊天？"**
+   - 确认后写入 `wechat.chat_username`（默认 `filehelper`）；若客户指定别的会话，记下来并让客户确认会话名拼写无误。
+
+确认完三点，把摘要（存哪 / 哪个微信 / 文件传输助手）回显给客户，再进入实际扫描或导入。这三问同样写进了 `scripts/init_local_config.py` 的首次配置向导（`bootstrap_config.py` / `START-HERE.bat`），客户走 CLI 入口也会被问到。
 
 当前 Windows OCR 后端：
 
@@ -88,7 +110,7 @@ START-HERE.bat
 - 如果是本地，保存目录是什么
 - 平时更想手动贴链接，还是自动扫描微信
 - 如果开微信扫描，要扫哪个会话、按什么频率跑
-- 微信账号优先自动识别；识别不到时，再让用户在本机选择可用账号
+- 微信账号先用 `wechat_win_decrypt.list_all_accounts()` 列出本机所有候选（可能不止一个）；**多账号必须让客户选，单账号也要展示出来让客户确认**，确认结果写入 `wechat.account_dir` / `selected_account_wxid`（见「开工前必须向客户确认的三件事」）
 
 补充规则：
 
@@ -162,7 +184,7 @@ python3 scripts/run_wechat_router_pipeline.py
 - 自动发现 Windows 微信 4.x 账号目录（`xwechat_files/<账号>/db_storage`）。
 - 微信运行且已登录时，查看器**打开即自动提取**数据库密钥（走 `wx_key.dll`），**普通用户无需手动输入任何密钥**。仅在开发者调试时，才可在页面折叠的「高级」区手动粘贴密钥，或在 config 里配置 `key_file` 指定密钥文件（`key_file` 也是由提取工具生成的，不是让人手敲的 64 位 hex）。
 - 会话列表（全部 / 私聊 / 群聊）+ 消息气泡（自己靠右、对方靠左）+ 关键词搜索。
-- 多账号机器：默认进“最近登录（mtime 最新）”的账号；也可用环境变量 `VIEWER_WXID=<微信号>` 或 `config.json` 里的 `wechat.selected_account_wxid` 精确绑定某个号，避免进错号。
+- 多账号机器：默认进“最近登录（mtime 最新）”的账号；为免进错号，**多账号时应先问客户确认哪个微信**，再用环境变量 `VIEWER_WXID=<微信号>` 或 `config.json` 里的 `wechat.selected_account_wxid` 精确绑定到那个号。
 
 **启动（二选一）**
 - 自动拉起：运行 `node scripts/launch-viewer.mjs`（服务已在 `127.0.0.1:8731` 则直接开浏览器；否则后台启动 `viewer-server.mjs` 并自动打开浏览器）。
