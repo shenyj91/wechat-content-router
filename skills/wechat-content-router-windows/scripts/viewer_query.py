@@ -86,6 +86,8 @@ def cmd_decrypt(account_dir, key_hex, cache_dir):
 
     os.makedirs(cache_dir, exist_ok=True)
     decrypted = failed = skipped = 0
+    core_decrypted = 0
+    core_failed = 0
     for root, _, files in os.walk(storage):
         for fn in sorted(files):
             if not fn.lower().endswith(".db"):
@@ -94,6 +96,8 @@ def cmd_decrypt(account_dir, key_hex, cache_dir):
             if base in SKIP_NAMES or base.endswith("_fts"):
                 skipped += 1
                 continue
+            # 核心库：会话/联系人/消息库。非核心库（收藏、表情、搜索索引等）失败不应拖死整个查看器
+            is_core = base in ("session", "contact") or base.startswith("message") or base.startswith("msg")
             src = os.path.join(root, fn)
             rel = os.path.relpath(src, storage)
             dst = os.path.join(cache_dir, rel)
@@ -105,25 +109,44 @@ def cmd_decrypt(account_dir, key_hex, cache_dir):
             except Exception as e:
                 sys.stderr.write(f"[FAIL] {rel}: 读取/解密异常 {e}\n")
                 failed += 1
+                if is_core: core_failed += 1
                 continue
             if plain is None:
                 sys.stderr.write(f"[FAIL] {rel}: 所有候选参数均失败\n")
                 failed += 1
+                if is_core: core_failed += 1
                 continue
             with open(dst, "wb") as f:
                 f.write(plain)
             decrypted += 1
+            if is_core: core_decrypted += 1
             sys.stderr.write(f"[OK] {rel}  raw_key={cfg['raw_key']} "
                              f"{cfg['kdf_algorithm']}/{cfg['hmac_algorithm']} "
                              f"pgno={cfg['hmac_pgno']}\n")
 
     sys.stderr.write(f"\n解密完成: 成功 {decrypted}，失败 {failed}，跳过 {skipped}\n")
-    out = {"success": failed == 0, "decrypted": decrypted, "failed": failed,
+    # 局部失败不致命：只要核心库都能解出，个别非核心库失败仍可正常浏览会话/消息
+    if decrypted == 0:
+        success = False
+        error = "未解密出任何数据库（db_storage 内无可用 .db，或密钥不匹配）"
+    elif failed == 0:
+        success = True
+        error = None
+    elif core_decrypted > 0 and core_failed == 0:
+        success = True
+        error = None
+    else:
+        success = False
+        error = f"{failed} 个库解密失败（密钥或加密参数不匹配），核心库未全部解出，查看器无法使用"
+
+    out = {"success": success, "decrypted": decrypted, "failed": failed,
            "skipped": skipped, "cache_dir": cache_dir}
-    if failed:
-        out["error"] = f"{failed} 个库解密失败（密钥或加密参数不匹配）"
+    if not success:
+        out["error"] = error
+    elif failed > 0:
+        out["warning"] = f"{failed} 个非核心库解密失败（不影响浏览会话/消息），可忽略"
     print(json.dumps(out))
-    return 0 if failed == 0 else 1
+    return 0 if success else 1
 
 
 # ────────────────────────────────────────────────────
@@ -376,6 +399,9 @@ def cmd_messages(cache_dir, self_wxid, session_id, limit=50, offset=0):
     contacts = load_contacts(cache_dir)
 
     page = raw[offset: offset + limit]
+    # 改成时间正序（最旧在前、最新在后）：前端按此顺序追加并滚到底部，
+    # 呈现正常聊天顺序（原来 reverse=True 返回最新在前，会导致看到的是最旧消息）。
+    page.reverse()
     msgs = [_build_message(r, self_wxid, name2id, contacts) for r in page]
     print(json.dumps({
         "success": True,

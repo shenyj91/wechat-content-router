@@ -19,31 +19,31 @@ import { dirname, join } from 'path'
 import { existsSync, mkdirSync, openSync, readFileSync } from 'fs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const ROOT = dirname(__dirname) // skills/wechat-content-router-<platform>/
 const PORT = process.env.VIEWER_PORT || 8731
 const BASE = `http://127.0.0.1:${PORT}`
 const LOG_DIR = join(__dirname, '.viewer_status')
 const LOG_FILE = join(LOG_DIR, 'viewer.log')
 
+// 依赖统一安装在 scripts/（与文档 `cd scripts && npm install`、key-extractor.js 的 require 解析一致）
 function depsPresent() {
-  return (
-    existsSync(join(ROOT, 'node_modules', 'koffi')) &&
-    existsSync(join(ROOT, 'node_modules', '@vscode', 'sudo-prompt'))
-  )
+  if (!existsSync(join(__dirname, 'node_modules', 'koffi'))) return false
+  // @vscode/sudo-prompt 仅 macOS/Linux 提权用；Windows 只需 koffi
+  if (process.platform !== 'win32' && !existsSync(join(__dirname, 'node_modules', '@vscode', 'sudo-prompt'))) return false
+  return true
 }
 
 async function ensureDeps() {
   if (depsPresent()) return
-  console.log('[launch] 首次运行，正在安装依赖 (koffi, @vscode/sudo-prompt)…')
+  console.log('[launch] 首次运行，正在安装依赖 (koffi' + (process.platform === 'win32' ? '' : ', @vscode/sudo-prompt') + ')…')
   await new Promise((resolve) => {
     const cp = spawn('npm', ['install'], {
-      cwd: ROOT,
+      cwd: __dirname,
       stdio: 'inherit',
       shell: process.platform === 'win32',
     })
     cp.on('close', () => resolve())
     cp.on('error', () => {
-      console.warn(`[launch] 自动安装失败，请手动在 ${ROOT} 运行: npm install`)
+      console.warn(`[launch] 自动安装失败，请手动在 ${__dirname} 运行: npm install`)
       resolve()
     })
   })

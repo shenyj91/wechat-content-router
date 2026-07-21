@@ -85,6 +85,7 @@ const py = {
     this.cacheDir = join(__dirname, '.viewer_cache', this.selfWxid)
     const res = await runPy(['decrypt', '--account-dir', accountDir, '--key', key, '--cache-dir', this.cacheDir])
     if (!res.success) throw new Error(res.error || '解密失败')
+    if (res.warning) console.warn('[viewer] 解密警告:', res.warning)
     this.connected = true
     return accountDir
   },
@@ -347,7 +348,8 @@ function isWeChatRunning() {
     cp.stdout.on('data', (d) => { out += d.toString() })
     cp.on('error', () => resolve(false))
     cp.on('close', (code) => {
-      if (process.platform === 'win32') resolve(/WeChat/i.test(out))
+      // Windows 微信 4.x 主进程名是 Weixin.exe，旧版才是 WeChat.exe；两者都要匹配
+      if (process.platform === 'win32') resolve(/Weixin\.exe|WeChat\.exe/i.test(out))
       else resolve(code === 0 && out.trim().length > 0)
     })
   })
@@ -373,11 +375,8 @@ async function tryAutoExtract(timeoutMs = 30000) {
 }
 
 async function connect(key, dir) {
-  const dirs = dir ? [dir] : findAllAccountDirs()
+  const dirs = dir ? [dir] : pickAccountDirs()
   if (dirs.length === 0) throw new Error('未找到微信账号目录（请确认微信已登录且存在 db_storage）')
-  dirs.sort((a, b) => {
-    try { return statSync(b).mtimeMs - statSync(a).mtimeMs } catch { return 0 }
-  })
   const target = dirs[0]
   await py.open(target, key)
   client = py
@@ -385,6 +384,39 @@ async function connect(key, dir) {
   needKey = false
   lastError = null
   return target
+}
+
+// 多账号时优先用用户指定的 wxid：①环境变量 VIEWER_WXID ②config.json 的 wechat.selected_account_wxid / account_dir
+// 未指定则回退“按 mtime 最新”的目录
+function preferredWxid() {
+  if (process.env.VIEWER_WXID) return process.env.VIEWER_WXID.toLowerCase()
+  try {
+    const cfgPath = join(__dirname, 'config.json')
+    if (existsSync(cfgPath)) {
+      const cfg = JSON.parse(readFileSync(cfgPath, 'utf8'))
+      const w = cfg && cfg.wechat && (cfg.wechat.selected_account_wxid || cfg.wechat.account_dir)
+      if (w) return String(w).toLowerCase()
+    }
+  } catch {}
+  return null
+}
+
+function pickAccountDirs() {
+  const dirs = findAllAccountDirs()
+  if (dirs.length === 0) return dirs
+  const pref = preferredWxid()
+  if (pref) {
+    const hit = dirs.find(d => basename(d).toLowerCase() === pref || d.toLowerCase() === pref)
+    if (hit) {
+      console.log(`[viewer] 按指定微信号绑定账号目录: ${hit}`)
+      return [hit]
+    }
+    console.warn(`[viewer] 指定微信号 ${pref} 未匹配到账号目录，回退到最新目录`)
+  }
+  dirs.sort((a, b) => {
+    try { return statSync(b).mtimeMs - statSync(a).mtimeMs } catch { return 0 }
+  })
+  return dirs
 }
 
 async function ensureConnected() {

@@ -162,6 +162,7 @@ python3 scripts/run_wechat_router_pipeline.py
 - 自动发现 Windows 微信 4.x 账号目录（`xwechat_files/<账号>/db_storage`）。
 - 微信运行且已登录时，查看器**打开即自动提取**数据库密钥（走 `wx_key.dll`），**普通用户无需手动输入任何密钥**。仅在开发者调试时，才可在页面折叠的「高级」区手动粘贴密钥，或在 config 里配置 `key_file` 指定密钥文件（`key_file` 也是由提取工具生成的，不是让人手敲的 64 位 hex）。
 - 会话列表（全部 / 私聊 / 群聊）+ 消息气泡（自己靠右、对方靠左）+ 关键词搜索。
+- 多账号机器：默认进“最近登录（mtime 最新）”的账号；也可用环境变量 `VIEWER_WXID=<微信号>` 或 `config.json` 里的 `wechat.selected_account_wxid` 精确绑定某个号，避免进错号。
 
 **启动（二选一）**
 - 自动拉起：运行 `node scripts/launch-viewer.mjs`（服务已在 `127.0.0.1:8731` 则直接开浏览器；否则后台启动 `viewer-server.mjs` 并自动打开浏览器）。

@@ -1,0 +1,9 @@
+{
+  "name": "wechat-content-router-windows-scripts",
+  "private": true,
+  "description": "查看器 / 密钥提取所需的 Node 依赖（koffi 加载 wx_key.dll，sudo-prompt 仅 macOS/Linux 提权用）",
+  "dependencies": {
+    "@vscode/sudo-prompt": "^9.3.2",
+    "koffi": "^2.9.0"
+  }
+}
