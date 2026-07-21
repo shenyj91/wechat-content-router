@@ -167,11 +167,14 @@ python3 scripts/run_wechat_router_pipeline.py
 - 自动拉起：运行 `node scripts/launch-viewer.mjs`（服务已在 `127.0.0.1:8731` 则直接开浏览器；否则后台启动 `viewer-server.mjs` 并自动打开浏览器）。
 - 手动：双击 `START-VIEWER.bat`（Windows）/ `START-VIEWER.command`（macOS）。
 
-首次运行若缺 Python 依赖，请先 `cd scripts && pip install -r requirements.txt`（需要 `cryptography` 与 `zstandard`）。密钥自动提取依赖 `wx_key.dll`，启动器会按需处理。
+首次运行请先装依赖（**两条都要**）：
+- Python 依赖：`cd scripts && pip install -r requirements.txt`（需要 `cryptography` 与 `zstandard`）。
+- Node 依赖（自动提取密钥用）：`cd scripts && npm install`（安装 `koffi`，`key-extractor.js` 通过它加载 `wx_key.dll`）。
+- 若不想装 Node 依赖，可跳过自动提取：页面手动粘贴 64 位 hex 密钥，或在 config 配 `key_file` 指定密钥文件。
 
 **前提**
 - 需安装 Node.js（https://nodejs.org）与 Python 3（含 `cryptography`、`zstandard`）。
-- 解密已完全脱离 WxLens 原生库，不再因 DLL 崩溃而失败；Windows 端自动提取密钥**无需关闭 SIP**（通过 `wx_key.dll` 注入）。若自动提取不可用，手动粘贴 / 配置 64 位 hex 密钥即可。
+- 解密与查询已完全脱离 WxLens 原生库，不再因 DLL（`wcdb_api.dll`/`WCDB.dll`）崩溃而失败；Windows 端自动提取密钥**无需关闭 SIP**（通过独立的 `wx_key.dll` 注入，它不触发那个反盗用崩溃）。若自动提取不可用，手动粘贴 / 配置 64 位 hex 密钥即可。
 
 ## 输出要求
 
