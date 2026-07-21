@@ -6,10 +6,10 @@ const require = createRequire(import.meta.url)
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 process.env.WX_KEY_DLL_PATH = join(__dirname, 'resources', 'key', 'win32', 'x64', 'wx_key.dll')
-process.env.WCDB_DLL_PATH = join(__dirname, 'resources', 'wcdb', 'win32', 'x64', 'wcdb_api.dll')
 
+// 说明：解密/查询已全面改为纯 Python（wcdb_decrypt.py + viewer_query.py），
+// 不再依赖会崩溃的 WxLens 私有 WCDB DLL。本桥接仅保留密钥提取与账号发现。
 const { extractKey } = require('./key-extractor.js')
-const { WcdbClient } = require('./wcdb-client.js')
 const { execFile } = require('child_process')
 const { promisify } = require('util')
 const { existsSync, readdirSync, statSync, readFileSync } = require('fs')
@@ -136,28 +136,6 @@ async function main() {
         const { ensureWeChatRunning } = require('./key-extractor.js')
         const result = await ensureWeChatRunning()
         console.log(JSON.stringify({ success: true, ...result }))
-        break
-      }
-      case 'get_sessions': {
-        const [accountDir, hexKey] = args
-        const client = new WcdbClient()
-        client.setResourcesPath(join(__dirname, 'resources'))
-        await client.open(accountDir, hexKey)
-        const sessions = await client.getSessions()
-        console.log(JSON.stringify({ success: true, sessions }))
-        client.close()
-        break
-      }
-      case 'get_messages': {
-        const [accountDir, hexKey, sessionId, limitStr, offsetStr] = args
-        const limit = parseInt(limitStr || '50')
-        const offset = parseInt(offsetStr || '0')
-        const client = new WcdbClient()
-        client.setResourcesPath(join(__dirname, 'resources'))
-        await client.open(accountDir, hexKey)
-        const messages = await client.getMessages(sessionId, limit, offset)
-        console.log(JSON.stringify({ success: true, messages }))
-        client.close()
         break
       }
       case 'find_account_dir': {

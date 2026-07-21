@@ -16,12 +16,14 @@
 import { spawn } from 'child_process'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
-import { existsSync } from 'fs'
+import { existsSync, mkdirSync, openSync, readFileSync } from 'fs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = dirname(__dirname) // skills/wechat-content-router-<platform>/
 const PORT = process.env.VIEWER_PORT || 8731
 const BASE = `http://127.0.0.1:${PORT}`
+const LOG_DIR = join(__dirname, '.viewer_status')
+const LOG_FILE = join(LOG_DIR, 'viewer.log')
 
 function depsPresent() {
   return (
@@ -73,25 +75,50 @@ async function main() {
     return
   }
   console.log('[launch] 正在后台启动查看器服务…')
+  // 把子进程的 stdout/stderr 写入日志文件，而不是丢弃（否则崩溃/报错完全不可见）
+  mkdirSync(LOG_DIR, { recursive: true })
+  const logFd = openSync(LOG_FILE, 'a')
   const child = spawn(process.execPath, ['viewer-server.mjs'], {
     cwd: __dirname,
     detached: true,
-    stdio: 'ignore',
+    stdio: ['ignore', logFd, logFd],
     env: process.env,
+  })
+  // 若进程一启动就失败（如 node 找不到、脚本语法错误）立即暴露
+  child.on('error', (e) => {
+    console.error(`[launch] 无法启动 viewer-server.mjs: ${e.message}`)
   })
   child.unref()
 
   let up = false
+  let exitedEarly = false
+  child.on('exit', (code) => { if (!up) exitedEarly = code })
+
   for (let i = 0; i < 40; i++) {
     await new Promise((r) => setTimeout(r, 500))
     if (await isUp()) { up = true; break }
+    if (exitedEarly !== false) break
   }
   if (up) {
     console.log(`[launch] 查看器已就绪: ${BASE}`)
     openBrowser(BASE)
   } else {
-    console.log('[launch] 服务启动超时，请手动检查 viewer-server.mjs 运行日志。')
-    console.log(`[launch] 也可直接运行: node ${__dirname}/viewer-server.mjs`)
+    if (exitedEarly !== false) {
+      console.log(`[launch] 查看器进程已退出（退出码 ${exitedEarly}），未能就绪。`)
+    } else {
+      console.log('[launch] 服务启动超时，未能就绪。')
+    }
+    console.log(`[launch] 启动日志: ${LOG_FILE}`)
+    // 直接把日志末尾打印出来，方便用户/我快速定位
+    try {
+      const tail = readFileSync(LOG_FILE, 'utf8').split('\n').slice(-25).join('\n')
+      if (tail.trim()) {
+        console.log('[launch] ---- viewer-server 最近日志 ----')
+        console.log(tail)
+        console.log('[launch] --------------------------------')
+      }
+    } catch {}
+    console.log(`[launch] 也可前台调试运行: node ${join(__dirname, 'viewer-server.mjs')}`)
   }
 }
 

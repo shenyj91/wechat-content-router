@@ -282,12 +282,6 @@ def find_account_dir() -> tuple[str, list[str]]:
     return data["accountDir"], data.get("allAccounts", [])
 
 
-def get_sessions(account_dir: str, hex_key: str) -> list[dict]:
-    """获取所有会话列表"""
-    data = _run_bridge("get_sessions", account_dir, hex_key, timeout=30)
-    return data.get("sessions", [])
-
-
 def list_sessions_with_info(account_dir: str, hex_key: str) -> list[dict]:
     """获取会话列表，并归一化成启动器可直接展示的结构（纯 Python 解密，不依赖崩溃 DLL）"""
     sessions = list_sessions_from_decrypted_files(account_dir, hex_key)
@@ -325,55 +319,6 @@ def list_sessions_with_info(account_dir: str, hex_key: str) -> list[dict]:
             }
         )
     return normalized
-
-
-def get_messages(
-    account_dir: str,
-    hex_key: str,
-    session_id: str,
-    limit: int = 50,
-    offset: int = 0,
-) -> list[dict]:
-    """获取某会话的消息"""
-    data = _run_bridge(
-        "get_messages",
-        account_dir,
-        hex_key,
-        session_id,
-        str(limit),
-        str(offset),
-        timeout=30,
-    )
-    return data.get("messages", [])
-
-
-def get_recent_links(
-    account_dir: str,
-    hex_key: str,
-    session_id: str = "filehelper",
-    limit: int = 50,
-) -> list[dict]:
-    """从指定会话提取最近消息里的链接"""
-    messages = get_messages(account_dir, hex_key, session_id, limit)
-    results = []
-
-    for msg in messages:
-        content = msg.get("content") or msg.get("message") or ""
-        if not content:
-            continue
-        for link_type, pattern in (("xhs", XHS_RE), ("mp", MP_RE), ("feishu", FEISHU_RE)):
-            match = pattern.search(content)
-            if match:
-                results.append({
-                    "type": link_type,
-                    "url": match.group(0).replace("&amp;", "&"),
-                    "raw_text": content,
-                    "create_time": msg.get("createTime") or msg.get("create_time") or 0,
-                    "local_id": msg.get("localId") or msg.get("local_id") or 0,
-                })
-                break
-
-    return results
 
 
 def decrypt_and_get_links(
