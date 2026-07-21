@@ -21,8 +21,8 @@ description: >
 3. 应自动切到本地辅助配置脚本，不再在聊天里代填路径
 4. 说明真实配置向导会先让用户选“本地 / Obsidian”，默认 OCR 开启，Obsidian 路径会先自动探测，不行再用目录选择器兜底
 5. 如果用户选择微信自动扫描，先让他选数据源：
-   - 内置 WCDB 解密并导入（默认、推荐）：会自动完成解密与读取
-   - 直接扫描微信进程（实验模式）：仅保留给能接受不稳定结果的场景
+   - 内置 WCDB 解密并导入（默认、推荐）：自动解密 `session.db`（会话列表）、`contact.db`（联系人），零原生依赖、稳定可用
+   - Frida 内存提取（消息内容专用）：当 `message_0.db` 等消息库在磁盘上大量页解密失败（新微信版本常见）时，**唯一能拿到聊天里链接/内容的路径**——直接扫描 WeChat 进程内存中的明文 SQLite 页。需 WeChat 在运行、已装 `frida`。
 6. 只有用户已经完成本地配置后，再进入日常使用
 
 当前 Windows OCR 后端：
@@ -173,8 +173,48 @@ python3 scripts/run_wechat_router_pipeline.py
 - Node 依赖（**必装**，自动提取密钥用）：`cd scripts && npm install`（安装 `koffi`，`key-extractor.js` 通过它加载 `wx_key.dll`）。若没装 koffi，自动提取会直接报错“缺少依赖”，此时应回退去装依赖，而**不是**让客户手动粘贴密钥（普通用户根本没有那段 64 位 hex）。
 
 **前提**
-- 需安装 Node.js（https://nodejs.org）与 Python 3（含 `cryptography`、`zstandard`）。
+- 需安装 Node.js（https://nodejs.org）与 Python 3（含 `cryptography`、`zstandard`；若要用内存提取消息内容，还需 `frida>=16.0`，见 `requirements.txt`）。
 - 解密与查询已完全脱离 WxLens 原生库，不再因 DLL（`wcdb_api.dll`/`WCDB.dll`）崩溃而失败；Windows 端自动提取密钥**无需关闭 SIP**（通过独立的 `wx_key.dll` 注入，它不触发那个反盗用崩溃）。若自动提取失败，请按页面提示排查（微信是否在运行并登录 / 是否执行过 `npm install` / macOS 是否关 SIP），**不要**让客户去手动粘贴 64 位 hex 密钥——普通用户没有那段密钥，那只是开发者调试入口。
+
+## 消息内容提取（Frida 内存路径）
+
+> 这是**消息内容（聊天里的链接/正文）的专用提取路径**。纯 Python 磁盘解密能稳定处理 `session.db`（会话列表）、`contact.db`（联系人），但**无法处理 `message_0.db` 等消息库**：新版本微信在磁盘上对消息库做了非标准/部分加密，实测从第 ~105 页起约 98.6% 的页 HMAC 校验失败，即使密钥正确也无法还原成可打开的库。此时**唯一能拿到消息内容的路径是 Frida 内存提取**——微信在内存里保留的是解密后的明文 SQLite 页，直接扫这些页即可导出。
+
+### 何时用
+- 自动扫描跑完却 `no_new_links`（读不到聊天里的链接）
+- 想从聊天记录里导出小红书 / 公众号 / 飞书 / 金山文档等链接
+- 想直接导出某段会话的明文 SQLite 库
+
+### 前提
+- Windows，且 **WeChat（`Weixin.exe`）正在运行并登录**
+- 已装 `frida`：`cd scripts && pip install -r requirements.txt`（requirements.txt 已含 `frida>=16.0`）
+- 需要足够权限让 frida 注入目标进程（通常管理员即可）
+
+### 用法
+```bash
+# 自动定位 Weixin.exe PID，扫描内存中的数据库 + 链接 + 关键词（默认 120s）
+python scripts/frida_route/run_frida_scan.py --seconds 120
+
+# 只列内存里扫到的数据库头
+python scripts/frida_route/wcr_mem_scan.py
+
+# 把内存里的库完整 dump 成可打开的 .db（二选一：base64 分块 / 二进制直传）
+python scripts/frida_route/wcr_mem_extract4.py
+python scripts/frida_route/wcr_mem_extract5.py
+
+# 一次性全扫（库 + 链接 + 关键词）到 output/
+python scripts/frida_route/wcr_mem_full_scan.py
+```
+
+输出在 `scripts/frida_route/output/`：`databases.json`（含每个内存库真实的 `page_size` / `reserved`，磁盘上读不到）、`urls.txt`、`categorized_urls.json`（按 xiaohongshu / mp.weixin / feishu / kdocs / other 分类）、`keyword_hits.json`、`memdb/*.db`。
+
+### 与磁盘解密的关系
+- `session.db` / `contact.db`：继续走纯 Python 磁盘解密（`wcdb_decrypt.py`），稳定可用。
+- `message_0.db` 等消息库：磁盘解密大量页失败时，**改用上面 Frida 路径**；导出的明文 `.db` 可直接用 `sqlite3` 打开查询。
+- 本 `frida_route/` 目录已**提交进 git**，重装 skill 不会再丢失（以前需要手动备份到 `C:\Users\Administrator\.workbuddy\backups\`）。
+
+### 密钥降级
+实时提取密钥有 ~30s 超时风险，因此优先用 `key_file` 降级：`scripts/wechat_key.txt`（由提取工具生成，形如 `x'f82d0da4…e495'`）。Frida 路径本身不依赖密钥——它读的是内存明文，所以即使密钥提取失败，内存扫描依然能导出消息内容。
 
 ## 输出要求
 

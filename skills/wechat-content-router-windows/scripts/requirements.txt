@@ -4,3 +4,6 @@ browser_cookie3>=0.19
 zstandard>=0.22
 # 纯 Python WCDB/SQLCipher 解密（替代会崩溃的 WxLens DLL）
 cryptography>=42.0
+# 内存扫描提取消息库明文页（Frida，仅 Windows 端、需 WeChat 进程在跑）
+# 这是 message_0.db 等消息库存盘大量页解密失败时的唯一可用提取路径
+frida>=16.0
