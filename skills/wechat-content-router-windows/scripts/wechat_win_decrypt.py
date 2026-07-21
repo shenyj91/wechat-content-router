@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import importlib.util
@@ -117,19 +118,59 @@ def _load_collect_recent_messages():
     return module
 
 
+def _load_contact_names(decrypted_root: Path) -> dict:
+    """从解密后的 contact.db 读取 username -> 显示名（remark > nick_name > alias）。"""
+    for root, _, files in os.walk(decrypted_root):
+        for fn in files:
+            if not fn.lower().endswith(".db"):
+                continue
+            p = os.path.join(root, fn)
+            try:
+                con = sqlite3.connect(p)
+                try:
+                    tbl = con.execute(
+                        "select name from sqlite_master where type='table' and name in ('Contact','Friend')"
+                    ).fetchone()
+                    if not tbl:
+                        continue
+                    t = tbl[0]
+                    cols = [r[1] for r in con.execute(f"pragma table_info('{t}')")]
+                    need = {"username", "remark", "nick_name", "alias"} & set(cols)
+                    if "username" not in need:
+                        continue
+                    sel = ", ".join(need)
+                    out = {}
+                    for row in con.execute(f"select {sel} from {t}"):
+                        d = dict(zip(need, row))
+                        u = d.get("username")
+                        if not u:
+                            continue
+                        name = (d.get("remark") or d.get("nick_name") or d.get("alias") or "").strip()
+                        out[u] = name or u
+                    return out
+                finally:
+                    con.close()
+            except Exception:
+                continue
+    return {}
+
+
 def list_sessions_from_decrypted_files(account_dir: str, hex_key: str, output_root: str | None = None) -> list[dict]:
-    """从解密后的 session.db 里列出会话。"""
+    """从解密后的 session.db 里列出会话（纯 Python，不依赖崩溃 DLL）。"""
     decrypted = decrypt_account_dbs(account_dir, hex_key, output_root=output_root)
+    decrypted_root = Path(decrypted.get("decrypted_root") or "")
     session_db = decrypted.get("session_db")
-    if not session_db:
+    if not session_db or not decrypted_root.exists():
         return []
-    import sqlite3
 
     session_path = Path(session_db)
     conn = sqlite3.connect(session_path)
     try:
+        cols = [r[1] for r in conn.execute("pragma table_info(SessionTable)")]
+        have = set(cols)
+        order = "last_timestamp" if "last_timestamp" in have else "rowid"
         rows = conn.execute(
-            "select username, last_timestamp from SessionTable order by last_timestamp desc"
+            f"select username, last_timestamp from SessionTable order by {order} desc"
         ).fetchall()
     finally:
         conn.close()
@@ -150,6 +191,12 @@ def list_sessions_from_decrypted_files(account_dir: str, hex_key: str, output_ro
                 },
             }
         )
+
+    contacts = _load_contact_names(decrypted_root)
+    for s in sessions:
+        u = s["session_id"]
+        if not u.endswith("@chatroom") and not u.startswith("gh_") and contacts.get(u):
+            s["display_name"] = contacts[u]
     return sessions
 
 
@@ -196,6 +243,33 @@ def extract_wechat_key(timeout: int = 30) -> str:
     return key
 
 
+def load_key_from_file(path) -> str:
+    """从文件读取 64 位十六进制密钥（兼容多种格式）：
+    - 纯 64hex
+    - x'64hex'（WeChat 内存 / DbkeyHook 常见格式）
+    - 含 key 字段的 JSON（key-extractor.js 的 status.json）
+    - dbkey.txt（DbkeyHook 写出的文本）
+    这样即使自动提取（wx_key.dll）失败，也可以手动把密钥贴进来继续。
+    """
+    p = Path(path).expanduser()
+    if not p.exists():
+        raise RuntimeError(f"密钥文件不存在: {p}")
+    txt = p.read_text(encoding="utf-8", errors="replace").strip()
+    m = re.search(r"x'([0-9a-fA-F]{64})'", txt)
+    if m:
+        return m.group(1)
+    m = re.search(r"([0-9a-fA-F]{64})", txt)
+    if m:
+        return m.group(1)
+    try:
+        obj = json.loads(txt)
+        if isinstance(obj, dict) and obj.get("key"):
+            return str(obj["key"]).strip()
+    except Exception:
+        pass
+    raise RuntimeError(f"密钥文件中未找到 64 位十六进制密钥: {p}")
+
+
 def ensure_wechat_running() -> dict:
     """确保微信已启动；未启动则自动拉起"""
     data = _run_bridge("ensure_wechat_running", timeout=15)
@@ -215,8 +289,8 @@ def get_sessions(account_dir: str, hex_key: str) -> list[dict]:
 
 
 def list_sessions_with_info(account_dir: str, hex_key: str) -> list[dict]:
-    """获取会话列表，并归一化成启动器可直接展示的结构"""
-    sessions = get_sessions(account_dir, hex_key)
+    """获取会话列表，并归一化成启动器可直接展示的结构（纯 Python 解密，不依赖崩溃 DLL）"""
+    sessions = list_sessions_from_decrypted_files(account_dir, hex_key)
     normalized = []
     for item in sessions:
         session_id = (

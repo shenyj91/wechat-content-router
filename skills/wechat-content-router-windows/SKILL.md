@@ -155,23 +155,23 @@ python3 scripts/run_wechat_router_pipeline.py
 
 > 这是**可选附加功能**，不是主流程。主流程是上文「模式 C：走微信自动路由」——把链接转发到文件传输助手，一条命令自动识别并导入。查看器只在你想在网页里浏览整段微信聊天记录时才用。
 
-本 skill 内置一个**微信聊天记录只读查看器**，复用 WxLens 的解密逻辑（WCDB 原生库 + `wx_key.dll` 密钥提取），把微信加密数据库解密后以网页聊天界面展示。
+本 skill 内置一个**微信聊天记录只读查看器**。解密与查询已改为**纯 Python**（`wcdb_decrypt.py` + `viewer_query.py`，零原生依赖），**不再依赖会崩溃的 `wcdb_api.dll` / `WCDB.dll`**；仅密钥提取仍用独立的 `wx_key.dll`（hook 微信进程）。把微信加密数据库解密后以网页聊天界面展示。
 
 **特性**
 - 纯只读：只 SELECT，绝不写入 / 删除 / 发送任何微信数据。
 - 自动发现 Windows 微信 4.x 账号目录（`xwechat_files/<账号>/db_storage`）。
-- 微信运行且已登录时，可一键“自动提取”数据库密钥；否则在页面粘贴 64 位 hex 密钥即可。
+- 微信运行且已登录时，可一键“自动提取”数据库密钥（仍走 `wx_key.dll`）；否则在页面粘贴 64 位 hex 密钥，或在 config 里配置 `key_file` 手动指定密钥文件。
 - 会话列表（全部 / 私聊 / 群聊）+ 消息气泡（自己靠右、对方靠左）+ 关键词搜索。
 
 **启动（二选一）**
 - 自动拉起：运行 `node scripts/launch-viewer.mjs`（服务已在 `127.0.0.1:8731` 则直接开浏览器；否则后台启动 `viewer-server.mjs` 并自动打开浏览器）。
 - 手动：双击 `START-VIEWER.bat`（Windows）/ `START-VIEWER.command`（macOS）。
 
-首次运行若缺 `koffi`，启动器会自动 `npm install koffi`（或手动 `cd scripts && npm install koffi`）。
+首次运行若缺 Python 依赖，请先 `cd scripts && pip install -r requirements.txt`（需要 `cryptography` 与 `zstandard`）。密钥自动提取依赖 `wx_key.dll`，启动器会按需处理。
 
 **前提**
-- 需安装 Node.js（https://nodejs.org）。
-- Windows 解密需要微信 4.x 运行且已登录（自带 `wx_key.dll` 与 WCDB 原生库）；Windows 端自动提取密钥**无需关闭 SIP**（通过 `wx_key.dll` 注入，比 macOS 更省事）。
+- 需安装 Node.js（https://nodejs.org）与 Python 3（含 `cryptography`、`zstandard`）。
+- 解密已完全脱离 WxLens 原生库，不再因 DLL 崩溃而失败；Windows 端自动提取密钥**无需关闭 SIP**（通过 `wx_key.dll` 注入）。若自动提取不可用，手动粘贴 / 配置 64 位 hex 密钥即可。
 
 ## 输出要求
 

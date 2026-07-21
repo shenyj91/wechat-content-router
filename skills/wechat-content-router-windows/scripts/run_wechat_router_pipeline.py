@@ -109,7 +109,13 @@ def main():
         try:
             with redirect_stdout(io.StringIO()):
                 if not wechat.get("_cached_key"):
-                    config["wechat"]["_cached_key"] = decrypt_module.extract_wechat_key()
+                    # 优先用配置里指定的密钥文件（wx_key.dll / DbkeyHook 产出），
+                    # 拿不到再走自动提取。这样自动提取崩溃时仍可手动喂密钥。
+                    key_file = wechat.get("key_file")
+                    if key_file and Path(key_file).expanduser().exists():
+                        config["wechat"]["_cached_key"] = decrypt_module.load_key_from_file(key_file)
+                    else:
+                        config["wechat"]["_cached_key"] = decrypt_module.extract_wechat_key()
                     save_config(config)
                 decrypted = decrypt_module.decrypt_account_dbs(
                     account_dir=account_dir,

@@ -1,10 +1,10 @@
 /**
  * 微信只读查看器 —— 本地服务 + 只读聊天界面后端
  *
- * 复用 WxLens 的解密逻辑（wcdb-client.js / key-extractor.js）：
+ * 解密 / 查询走纯 Python（viewer_query.py，替代会崩溃的 WxLens DLL）：
  *   1. 自动发现微信账号目录（Windows / macOS）
- *   2. 提取或接收 64 位 hex 数据库密钥
- *   3. 用 WCDB 原生库（koffi FFI）解密并读取会话 / 消息 / 搜索
+ *   2. 提取或接收 64 位 hex 数据库密钥（密钥提取仍用 key-extractor.js / wx_key.dll）
+ *   3. 用纯 Python（wcdb_decrypt.py + viewer_query.py）解密并读取会话 / 消息 / 搜索
  *   4. 暴露 REST API，供 viewer.html 调用
  *
  * 纯只读：本服务只 SELECT，绝不写入、删除、发送任何微信数据。
@@ -25,18 +25,89 @@ const KEY_CACHE = join(__dirname, '.viewer_key.json')
 const STATUS_DIR = join(__dirname, '.viewer_status')
 
 // ────────────────────────────────────────────────────
-// 依赖（WxLens 解密逻辑）
+// 解密 / 查询后端（纯 Python，替代会崩溃的 WxLens DLL）
 // ────────────────────────────────────────────────────
-let WcdbClient, extractKey, ensureWeChatRunning
-try {
-  ;({ WcdbClient } = require('./wcdb-client.js'))
-} catch (e) {
-  console.error('[viewer] 无法加载 wcdb-client.js:', e.message)
-}
+// 仅密钥提取仍用独立 wx_key.dll（key-extractor.js）；解密与查询走 viewer_query.py。
+let extractKey, ensureWeChatRunning
 try {
   ;({ extractKey, ensureWeChatRunning } = require('./key-extractor.js'))
 } catch (e) {
   console.warn('[viewer] 无法加载 key-extractor.js（自动取密钥将不可用）:', e.message)
+}
+
+function pythonBin() {
+  return process.env.VIEWER_PYTHON || 'python3'
+}
+
+// 调用 viewer_query.py 子命令，解析 stdout 的 JSON
+function runPy(args) {
+  return new Promise((resolve, reject) => {
+    const cp = spawn(pythonBin(), [join(__dirname, 'viewer_query.py'), ...args],
+      { stdio: ['ignore', 'pipe', 'pipe'] })
+    let out = ''
+    let err = ''
+    cp.stdout.on('data', (d) => { out += d.toString() })
+    cp.stderr.on('data', (d) => { err += d.toString() })
+    cp.on('error', (e) => reject(e))
+    cp.on('close', (code) => {
+      if (!out && code !== 0) return reject(new Error(err || `viewer_query.py 退出码 ${code}`))
+      try {
+        resolve(JSON.parse(out))
+      } catch (e) {
+        reject(new Error(`解析 viewer_query.py 输出失败: ${out.slice(0, 200)} | ${err.slice(0, 200)}`))
+      }
+    })
+  })
+}
+
+// 纯 Python 客户端：解密一次（缓存），之后查询均读缓存
+const py = {
+  connected: false,
+  accountDir: null,
+  cacheDir: null,
+  selfWxid: null,
+  myWxid: null,
+  async open(accountDir, key) {
+    this.accountDir = accountDir
+    this.selfWxid = basename(accountDir)
+    this.myWxid = this.selfWxid
+    this.cacheDir = join(__dirname, '.viewer_cache', this.selfWxid)
+    const res = await runPy(['decrypt', '--account-dir', accountDir, '--key', key, '--cache-dir', this.cacheDir])
+    if (!res.success) throw new Error(res.error || '解密失败')
+    this.connected = true
+    return accountDir
+  },
+  isConnected() { return this.connected },
+  async getSessions(kind = 'all') {
+    const res = await runPy(['sessions', '--cache-dir', this.cacheDir, '--self', this.selfWxid, '--kind', kind])
+    if (!res.success) throw new Error(res.error)
+    return res.sessions
+  },
+  async getMessages(sessionId, limit = 50, offset = 0) {
+    const res = await runPy(['messages', '--cache-dir', this.cacheDir, '--self', this.selfWxid,
+      '--session-id', sessionId, '--limit', String(limit), '--offset', String(offset)])
+    if (!res.success) throw new Error(res.error)
+    return res.messages
+  },
+  async searchMessages(keyword, sessionId = '', limit = 30) {
+    const args = ['search', '--cache-dir', this.cacheDir, '--self', this.selfWxid,
+      '--keyword', keyword, '--limit', String(limit)]
+    if (sessionId) args.push('--session-id', sessionId)
+    const res = await runPy(args)
+    if (!res.success) throw new Error(res.error)
+    return res.messages
+  },
+  async getDisplayNames(ids) {
+    if (!ids || ids.length === 0) return {}
+    const res = await runPy(['display-names', '--cache-dir', this.cacheDir, '--self', this.selfWxid, '--ids', ids.join(',')])
+    if (!res.success) return {}
+    return res.names || {}
+  },
+  async getContact(username) {
+    const res = await runPy(['contact', '--cache-dir', this.cacheDir, '--username', username])
+    if (!res.success) return null
+    return res.contact
+  },
 }
 
 // ────────────────────────────────────────────────────
@@ -291,17 +362,14 @@ async function tryAutoExtract(timeoutMs = 30000) {
 }
 
 async function connect(key, dir) {
-  if (!WcdbClient) throw new Error('wcdb-client 未加载')
   const dirs = dir ? [dir] : findAllAccountDirs()
   if (dirs.length === 0) throw new Error('未找到微信账号目录（请确认微信已登录且存在 db_storage）')
   dirs.sort((a, b) => {
     try { return statSync(b).mtimeMs - statSync(a).mtimeMs } catch { return 0 }
   })
   const target = dirs[0]
-  const c = new WcdbClient()
-  c.setResourcesPath(join(__dirname, 'resources'))
-  await c.open(target, key)
-  client = c
+  await py.open(target, key)
+  client = py
   accountDir = target
   needKey = false
   lastError = null

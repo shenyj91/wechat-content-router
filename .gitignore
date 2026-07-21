@@ -16,3 +16,4 @@ node_modules/
 .viewer_status/
 .viewer_key*
 .viewer_key.json
+.viewer_cache/

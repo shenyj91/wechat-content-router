@@ -50,6 +50,7 @@
     "message_table": "",
     "selected_account_wxid": "",
     "selected_account_label": "",
+    "key_file": "",
     "decrypt_workdir": "",
     "decrypt_exe": "",
     "decrypt_python": "",
