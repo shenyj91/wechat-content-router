@@ -17,3 +17,6 @@ node_modules/
 .viewer_key*
 .viewer_key.json
 .viewer_cache/
+
+# Frida 内存扫描产物（链接/库 dump，不进仓库）
+scripts/frida_route/output/
