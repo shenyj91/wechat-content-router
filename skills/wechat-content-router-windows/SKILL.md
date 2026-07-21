@@ -204,9 +204,14 @@ python scripts/frida_route/wcr_mem_extract5.py
 
 # 一次性全扫（库 + 链接 + 关键词）到 output/
 python scripts/frida_route/wcr_mem_full_scan.py
+
+# 闭环第二步：把扫到的链接按分类导入 Obsidian / 本地目录
+python scripts/frida_route/import_frida_links.py
 ```
 
 输出在 `scripts/frida_route/output/`：`databases.json`（含每个内存库真实的 `page_size` / `reserved`，磁盘上读不到）、`urls.txt`、`categorized_urls.json`（按 xiaohongshu / mp.weixin / feishu / kdocs / other 分类）、`keyword_hits.json`、`memdb/*.db`。
+
+`import_frida_links.py` 读取 `categorized_urls.json`，按分类路由导入（落点由 config 的 Obsidian vault / 本地目录决定）：`xiaohongshu`→小红书 importer、`mp.weixin`→公众号 importer、`feishu`→飞书 importer；`kdocs`/其它类本 skill 暂无对应 importer 会跳过。用 `output/imported_frida_links.json` 记录已导入 URL 去重，重复运行只补新链接。
 
 ### 与磁盘解密的关系
 - `session.db` / `contact.db`：继续走纯 Python 磁盘解密（`wcdb_decrypt.py`），稳定可用。
