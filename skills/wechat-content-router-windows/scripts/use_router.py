@@ -82,30 +82,36 @@ def import_manual(raw_text: str):
 
 
 def run_wechat_once():
-    result = subprocess.run(
-        [sys.executable, str(SCRIPT_DIR / "run_wechat_router_pipeline.py")],
+    """微信自动扫描：走 Frida 内存提取（按 chat_username 过滤 filehelper），再按分类导入。
+
+    注：旧版 decrypted_files 管线依赖数据库密钥，在微信 4.1.4+ 已失效，故这里直接用 Frida。
+    """
+    frida_dir = SCRIPT_DIR / "frida_route"
+    print("[*] 步骤1/2：Frida 内存扫描（按 chat_username 过滤 filehelper）…", file=sys.stderr)
+    scan = subprocess.run(
+        [sys.executable, str(frida_dir / "run_frida_scan.py")],
         capture_output=True,
         text=True,
     )
-    raw_output = (result.stdout or "").strip()
-    if raw_output:
-        try:
-            payload = json.loads(raw_output)
-            if isinstance(payload, dict) and payload.get("status") == "decrypt_failed":
-                error_text = str(payload.get("error") or "")
-                if "SecurityStatus:2" in error_text or "wcdb_init" in error_text:
-                    raise RuntimeError("微信自动扫描不可用：WCDB 安全保护拦住了当前环境，先用手动粘贴链接模式。")
-                raise RuntimeError(error_text or "微信扫描失败")
-            return payload
-        except json.JSONDecodeError:
-            pass
-    if result.returncode != 0:
-        stderr = (result.stderr or "").strip()
-        stdout = raw_output
-        if "SecurityStatus:2" in stderr or "SecurityStatus:2" in stdout or "wcdb_init" in stderr or "wcdb_init" in stdout:
-            raise RuntimeError("微信自动扫描不可用：WCDB 安全保护拦住了当前环境，先用手动粘贴链接模式。")
-        raise RuntimeError(stderr or stdout or "微信扫描失败")
-    return json.loads(result.stdout)
+    if scan.stdout:
+        print(scan.stdout)
+    if scan.returncode != 0:
+        err = (scan.stderr or "").strip()
+        print(err, file=sys.stderr)
+        raise RuntimeError(err or "Frida 扫描失败（微信需运行并登录，且用管理员权限运行本脚本）")
+    print("[*] 步骤2/2：按分类导入 Obsidian / 本地…", file=sys.stderr)
+    imp = subprocess.run(
+        [sys.executable, str(frida_dir / "import_frida_links.py")],
+        capture_output=True,
+        text=True,
+    )
+    if imp.stdout:
+        print(imp.stdout)
+    if imp.returncode != 0:
+        err = (imp.stderr or "").strip()
+        print(err, file=sys.stderr)
+        raise RuntimeError(err or "链接导入失败")
+    return {"status": "ok"}
 
 
 def print_summary(config: dict):

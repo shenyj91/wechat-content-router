@@ -20,7 +20,7 @@ description: >
 2. 不要在聊天里替用户填写路径，也不要把“其他补充...”当成真实文件夹选择
 3. 应在聊天里逐项问客户（见「开工前必须向客户确认的三件事」），拿到明确答复后用 `init_local_config.py` 的命令行参数**非交互**写配置。**不要运行会卡在 `input()` 的 `bootstrap_config.py` / 交互式向导**——在聊天里客户无法回答子进程的 `input()`，助手一旦去跑它就会卡住、或偷用探测值静默写配置（这正是「没给我选择的权利」的根因）。OCR 默认开启不再询问
 4. 说明真实配置向导会先让用户选“本地 / Obsidian”，默认 OCR 开启；Obsidian 路径会先**探测出候选**，但**必须让客户确认**后才写入（见下文「开工前必须向客户确认的三件事」）
-5. 取链接的主路径用 **Frida 内存提取**（无需数据库密钥，直接扫微信进程内存里的明文页，是当前微信 4.1.4+ 最稳的路径）：需 WeChat 在运行、已装 `frida`。仅在需要纯 Python 解密 `session.db` / `contact.db`（会话列表 / 联系人）且本机已能拿到数据库密钥时，才走内置 WCDB 解密。
+5. 取链接的主路径用 **Frida 内存提取**（无需数据库密钥，直接扫微信进程内存里的明文页，是当前微信 4.1.4+ 最稳的路径）：需 WeChat 在运行、已装 `frida`。扫描结果会按第 3 问选定的会话（`chat_username`，默认文件传输助手）过滤，只导入你转发进来的链接，其他聊天的链接不会混进来。仅在需要纯 Python 解密 `session.db` / `contact.db`（会话列表 / 联系人）且本机已能拿到数据库密钥时，才走内置 WCDB 解密。
 6. 只有用户已经完成本地配置后，再进入日常使用
 
 ## 开工前必须向客户确认的三件事（强制）
@@ -255,6 +255,13 @@ python scripts/frida_route/wcr_mem_full_scan.py
 # 闭环第二步：把扫到的链接按分类导入 Obsidian / 本地目录
 python scripts/frida_route/import_frida_links.py
 ```
+
+### 按会话过滤（filehelper / 指定聊天）
+扫描默认只保留 **config 里 `wechat.chat_username`** 对应的会话链接（默认 `filehelper`）。实现方式：找到内存里的消息库，读出整库镜像、逐页解析记录，挑出 `talker` 列等于该会话的记录，再用全局抓到的 URL 做成员判断。这样你发到文件传输助手的链接才会被导入，其他聊天的链接不会混进来。
+
+- 手动跑也可显式指定：`python scripts/frida_route/run_frida_scan.py --chat-username filehelper`
+- 过滤结果写在 `output/filter_info.json`（`applied` / `kept` / `total`），导入时会打印。
+- **注意（已知版本适配点）**：微信 4.x 消息库的 `talker` 存储方式随版本变化——有的是字符串 `filehelper`，有的存成整数 `TalkerId` 再查联系人表。若 `filter_info.applied=false`（过滤结果为 0、回退为全部链接），说明当前版本的 talker 没被识别到。请在你的机器上确认 4.1.11 的消息库结构，或暂时把 `chat_username` 留空以不过滤。这不影响其他功能，只是过滤没生效。
 
 输出在 `scripts/frida_route/output/`：`databases.json`（含每个内存库真实的 `page_size` / `reserved`，磁盘上读不到）、`urls.txt`、`categorized_urls.json`（按 xiaohongshu / mp.weixin / feishu / kdocs / other 分类）、`keyword_hits.json`、`memdb/*.db`。
 

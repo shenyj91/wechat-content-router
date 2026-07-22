@@ -95,6 +95,13 @@ def main():
         return 0
 
     config = load_config(Path(args.config))
+    # 报告扫描阶段的 talker 过滤结果（filehelper 等）
+    fi = load_json(HERE / "output" / "filter_info.json", {})
+    if fi:
+        if fi.get("applied"):
+            print(f"[*] 扫描已按会话 {fi.get('chat_username')} 过滤：保留 {fi.get('kept')}/{fi.get('total')} 条链接")
+        else:
+            print(f"[!] 扫描未匹配到会话 {fi.get('chat_username')} 的链接，已回退为全部 {fi.get('total')} 条（如需严格过滤请确认微信 4.1.11 消息库 talker 存储方式）")
     state = load_json(STATE_PATH, {})
     done = set(state.get("imported_urls", []))
 

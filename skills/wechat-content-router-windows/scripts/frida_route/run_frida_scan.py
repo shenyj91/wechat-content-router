@@ -39,6 +39,8 @@ import argparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(HERE, "output")
+SCRIPTS_DIR = os.path.dirname(HERE)
+CONFIG_PATH = os.path.join(SCRIPTS_DIR, "config.json")
 
 
 def find_wechat_pid():
@@ -123,6 +125,54 @@ function extractTableNames(pageData) {
         } catch(e) {}
     }
     return names;
+}
+
+function readStr(arr, start, n) {
+    try {
+        let bytes = [];
+        for (let k = 0; k < n; k++) bytes.push(arr[start + k]);
+        try { return decodeUtf8(bytes); } catch (e) { return latin1(bytes); }
+    } catch (e) { return ""; }
+}
+function decodeUtf8(bytes) {
+    let s = ""; let i = 0;
+    while (i < bytes.length) {
+        let c = bytes[i++];
+        if (c < 0x80) s += String.fromCharCode(c);
+        else if (c >= 0xC0 && c < 0xE0) s += String.fromCharCode(((c & 0x1F) << 6) | (bytes[i++] & 0x3F));
+        else if (c >= 0xE0) s += String.fromCharCode(((c & 0x0F) << 12) | ((bytes[i++] & 0x3F) << 6) | (bytes[i++] & 0x3F));
+        else break;
+    }
+    return s;
+}
+function latin1(bytes) { let s = ""; for (let k = 0; k < bytes.length; k++) s += String.fromCharCode(bytes[k]); return s; }
+
+// 解析一条 SQLite 记录的所有列（仅取文本列内容；talker 过滤用）
+function parseRecordColumns(arr, cellOff, pageType) {
+    let pos = cellOff;
+    if (pageType === 0x05) pos += 4; // interior table：跳过 4 字节最右子页指针
+    let [payloadLen, p2] = parseVarint(arr, pos); pos = p2;
+    let [rowid, p3] = parseVarint(arr, pos); pos = p3;
+    let [hdrLen, p4] = parseVarint(arr, pos); pos = p4;
+    const hdrEnd = pos + hdrLen;
+    const serialTypes = [];
+    while (pos < hdrEnd && pos < arr.length) {
+        let [st, p5] = parseVarint(arr, pos); pos = p5;
+        serialTypes.push(st);
+    }
+    let dpos = hdrEnd;
+    const cols = [];
+    for (let si = 0; si < serialTypes.length; si++) {
+        const st = serialTypes[si];
+        if (st === 0) { cols.push(null); continue; }
+        if (st >= 1 && st <= 4) { cols.push(0); dpos += st; continue; }
+        if (st === 5) { cols.push(0); dpos += 6; continue; }
+        if (st === 6 || st === 7) { cols.push(0); dpos += 8; continue; }
+        if (st >= 12 && st % 2 === 0) { const n = (st - 12) >> 1; cols.push(readStr(arr, dpos, n)); dpos += n; continue; }
+        if (st >= 13 && st % 2 === 1) { const n = (st - 13) >> 1; cols.push(readStr(arr, dpos, n)); dpos += n; continue; }
+        cols.push(null);
+    }
+    return cols;
 }
 
 send({type: "status", msg: "Scanning memory..."});
@@ -273,6 +323,57 @@ for (const tok of DOMAIN_TOKENS) {
         }
     }
 }
+// Phase 2.5：按 talker 过滤（filehelper / 指定会话）
+// 微信内存里 URL 来自所有会话，必须只留目标会话（如 filehelper）的链接。
+// 做法：找到消息库，读出整库内存镜像，逐页解析记录；记录中某列 == CHAT_USERNAME 即目标会话，
+// 再用全局抓到的 URL 在该记录文本里做成员判断。若过滤结果为 0（如 talker 存成整数 id），回退全部。
+if (CHAT_USERNAME && CHAT_USERNAME.length > 0) {
+    send({type: "status", msg: "按 talker 过滤：" + CHAT_USERNAME});
+    const totalBefore = allUrls.size;
+    const kept = new Set();
+    for (const db of foundDbs) {
+        if (!db.tables.some(t => /msg/i.test(t) || /message/i.test(t) || /chat/i.test(t))) continue;
+        const pageSize = (db.pageSize && db.pageSize > 0) ? db.pageSize : 4096;
+        const dbBytes = (db.dbSize || 0) * pageSize;
+        if (dbBytes <= 0 || dbBytes > 200 * 1024 * 1024) continue;
+        let baseAddr;
+        try { baseAddr = ptr(db.addr); } catch (e) { continue; }
+        let img;
+        try { img = baseAddr.readByteArray(dbBytes); } catch (e) { continue; }
+        const arr = new Uint8Array(img);
+        for (let off = 0; off + 8 <= arr.length; off += pageSize) {
+            const pageType = arr[off];
+            if (pageType !== 0x0D && pageType !== 0x05) continue;
+            const numCells = (arr[off + 3] << 8) | arr[off + 4];
+            const headerSize = (pageType === 0x05) ? 12 : 8;
+            const cellPtrStart = off + headerSize;
+            for (let i = 0; i < numCells; i++) {
+                const ptrOff = cellPtrStart + i * 2;
+                if (ptrOff + 2 > arr.length) break;
+                const cellOff = ((arr[ptrOff] << 8) | arr[ptrOff + 1]) + off;
+                if (cellOff < 0 || cellOff + 4 > arr.length) continue;
+                let cols;
+                try { cols = parseRecordColumns(arr, cellOff, pageType); } catch (e) { continue; }
+                if (!cols) continue;
+                const isTalker = cols.some(c => typeof c === "string" && c === CHAT_USERNAME);
+                if (!isTalker) continue;
+                const recordText = cols.filter(c => typeof c === "string").join(" ");
+                for (const u of allUrls) {
+                    const bare = u.replace(/^https?:\/\//, "");
+                    if (recordText.includes(u) || recordText.includes(bare)) kept.add(u);
+                }
+            }
+        }
+    }
+    if (kept.size > 0) {
+        allUrls.clear();
+        for (const u of kept) allUrls.add(u);
+        send({type: "filter_info", chat_username: CHAT_USERNAME, kept: kept.size, total: totalBefore, applied: true});
+    } else {
+        send({type: "filter_info", chat_username: CHAT_USERNAME, kept: 0, total: totalBefore, applied: false});
+    }
+}
+
 send({type: "urls", count: allUrls.size, urls: Array.from(allUrls).sort()});
 
 // Phase 3: keywords
@@ -331,6 +432,12 @@ def on_message(message, data, state):
         elif t == "keyword_hit":
             state["keywords"].append({"keyword": p["keyword"], "text": p["text"]})
             print(f"[!] Keyword '{p['keyword']}': {p['text'][:200]}")
+        elif t == "filter_info":
+            state["filter_info"] = p
+            if p.get("applied"):
+                print(f"[*] 已按 talker={p.get('chat_username')} 过滤：保留 {p.get('kept')}/{p.get('total')} 条链接")
+            else:
+                print(f"[!] talker 过滤在 {p.get('chat_username')} 未匹配到链接，回退为全部 {p.get('total')} 条（如需严格过滤，请在本机确认微信 4.1.11 消息库的 talker 存储方式）")
         elif t == "all_done":
             print(f"\n[*] All done!")
     elif message["type"] == "error":
@@ -341,7 +448,19 @@ def main():
     ap = argparse.ArgumentParser(description="Frida 内存扫描提取微信消息/链接")
     ap.add_argument("--seconds", type=int, default=120, help="扫描时长（秒）")
     ap.add_argument("--pid", type=int, default=None, help="手动指定微信 PID")
+    ap.add_argument("--chat-username", default=None,
+                    help="只保留该会话（talker）的链接，如 filehelper；默认读 config.json 的 wechat.chat_username")
     args = ap.parse_args()
+
+    # 确定要过滤的会话：优先命令行，否则读 config.json（默认 filehelper）
+    chat_username = args.chat_username
+    if not chat_username and os.path.exists(CONFIG_PATH):
+        try:
+            _cfg = json.load(open(CONFIG_PATH, encoding="utf-8"))
+            chat_username = (_cfg.get("wechat") or {}).get("chat_username") or ""
+        except Exception:
+            chat_username = ""
+    chat_username = (chat_username or "").strip()
 
     pid = args.pid or find_wechat_pid()
     if pid is None:
@@ -350,7 +469,7 @@ def main():
     print(f"[+] 附加到微信 PID {pid}")
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    state = {"dbs": [], "urls": [], "keywords": []}
+    state = {"dbs": [], "urls": [], "keywords": [], "filter_info": None}
 
     try:
         session = frida.attach(pid)
@@ -359,7 +478,12 @@ def main():
         print("    若提示权限不足，请用管理员权限运行；若微信未登录，请先登录。")
         sys.exit(1)
 
-    script = session.create_script(JS_CODE)
+    js_code = JS_CODE.replace(
+        "const SQLITE_HEADER_PATTERN",
+        "const CHAT_USERNAME = " + json.dumps(chat_username) + ";\nconst SQLITE_HEADER_PATTERN",
+        1,
+    )
+    script = session.create_script(js_code)
     script.on("message", lambda m, d: on_message(m, d, state))
     script.load()
     print(f"[*] 扫描中（约 {args.seconds} 秒）…")
@@ -374,6 +498,9 @@ def main():
             f.write(u + "\n")
     with open(os.path.join(OUTPUT_DIR, "keyword_hits.json"), "w", encoding="utf-8") as f:
         json.dump(state["keywords"], f, ensure_ascii=False, indent=2)
+    if state.get("filter_info"):
+        with open(os.path.join(OUTPUT_DIR, "filter_info.json"), "w", encoding="utf-8") as f:
+            json.dump(state["filter_info"], f, ensure_ascii=False, indent=2)
 
     interesting = {"xiaohongshu": [], "mp.weixin": [], "feishu": [], "kdocs": [], "other_interesting": [], "all_unique": state["urls"]}
     for u in state["urls"]:

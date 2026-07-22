@@ -379,7 +379,7 @@ def build_config(
     monitor_mode: str = "manual",
     interval_seconds: int = 900,
     wechat_enabled: bool = False,
-    wechat_source_mode: str = "decrypted_files",
+    wechat_source_mode: str = "frida_memory",
     chat_username: str = "filehelper",
     account_dir: str = "",
     db_dir: str = "",
@@ -464,9 +464,9 @@ def build_config(
 def interactive_config() -> dict:
     print("开始配置 wechat-content-router")
     mode = prompt_choice(
-        "内容要保存到哪里？",
-        [("local", "保存到本地普通文件夹"), ("obsidian", "保存到 Obsidian")],
-        default_key="local",
+        "输出格式（转换后的文件类型与落盘位置）？",
+        [("obsidian", "Markdown 文件 → 放入 Obsidian"), ("local", "PDF 文件 → 下载到本地文件夹")],
+        default_key="obsidian",
     )
 
     vault_root = ""
@@ -485,7 +485,7 @@ def interactive_config() -> dict:
     )
 
     wechat_enabled = default_action == "wechat_monitor"
-    wechat_source_mode = "decrypted_files"
+    wechat_source_mode = "frida_memory"
     monitor_mode = "manual"
     interval_seconds = 900
     chat_username = "filehelper"
@@ -502,7 +502,7 @@ def interactive_config() -> dict:
     decrypt_script = ""
 
     if wechat_enabled:
-        wechat_source_mode = "decrypted_files"
+        wechat_source_mode = "frida_memory"
 
         wechat_entry = prompt_choice(
             "链接从哪个微信入口读取？（你通常会把要整理的内容转发到文件传输助手）",
@@ -675,11 +675,13 @@ def print_config_summary(config: dict) -> None:
     else:
         wechat_entry = f"固定监控：{wechat.get('chat_username')}"
 
-    source_mode = wechat.get("source_mode") or "decrypted_files"
-    if source_mode == "decrypted_files":
+    source_mode = wechat.get("source_mode") or "frida_memory"
+    if source_mode == "frida_memory":
+        source_text = "微信数据源：Frida 内存扫描（按会话过滤，无需数据库密钥）"
+    elif source_mode == "decrypted_files":
         source_text = "微信数据源：内置 WCDB 解密并导入"
     else:
-        source_text = "微信数据源：实验模式（直接扫描微信进程）"
+        source_text = "微信数据源：直接扫描微信进程"
 
     account_text = wechat.get("selected_account_label") or wechat.get("selected_account_wxid") or "首次运行时自动识别"
 
