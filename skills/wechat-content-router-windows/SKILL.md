@@ -20,9 +20,7 @@ description: >
 2. 不要在聊天里替用户填写路径，也不要把“其他补充...”当成真实文件夹选择
 3. 应在聊天里逐项问客户（见「开工前必须向客户确认的三件事」），拿到明确答复后用 `init_local_config.py` 的命令行参数**非交互**写配置。**不要运行会卡在 `input()` 的 `bootstrap_config.py` / 交互式向导**——在聊天里客户无法回答子进程的 `input()`，助手一旦去跑它就会卡住、或偷用探测值静默写配置（这正是「没给我选择的权利」的根因）。OCR 默认开启不再询问
 4. 说明真实配置向导会先让用户选“本地 / Obsidian”，默认 OCR 开启；Obsidian 路径会先**探测出候选**，但**必须让客户确认**后才写入（见下文「开工前必须向客户确认的三件事」）
-5. 如果用户选择微信自动扫描，先让他选数据源：
-   - 内置 WCDB 解密并导入（默认、推荐）：自动解密 `session.db`（会话列表）、`contact.db`（联系人），零原生依赖、稳定可用
-   - Frida 内存提取（消息内容专用）：当 `message_0.db` 等消息库在磁盘上大量页解密失败（新微信版本常见）时，**唯一能拿到聊天里链接/内容的路径**——直接扫描 WeChat 进程内存中的明文 SQLite 页。需 WeChat 在运行、已装 `frida`。
+5. 取链接的主路径用 **Frida 内存提取**（无需数据库密钥，直接扫微信进程内存里的明文页，是当前微信 4.1.4+ 最稳的路径）：需 WeChat 在运行、已装 `frida`。仅在需要纯 Python 解密 `session.db` / `contact.db`（会话列表 / 联系人）且本机已能拿到数据库密钥时，才走内置 WCDB 解密。
 6. 只有用户已经完成本地配置后，再进入日常使用
 
 ## 开工前必须向客户确认的三件事（强制）
@@ -33,7 +31,7 @@ description: >
 > - **聊天 / 专家入口（WorkBuddy 里召唤本专家）**：助手在**聊天里逐项问**客户（用下面的探测命令给出候选），拿到明确答复后，用 `init_local_config.py` 的**命令行参数非交互写配置**（命令见第 3 点末尾）。**绝不要在聊天里运行 `bootstrap_config.py` / `interactive_config`**——它们依赖子进程的 `input()`，客户在聊天里答不了，助手跑去跑就会卡住或偷用探测值静默写配置（"没给我选择的权利"的根因）。
 > - **终端入口（Windows 直接双击 `CONFIG-WIZARD.bat` / `START-HERE.bat`）**：走 CLI 交互向导 `interactive_config`，已**强制显式选择**（Obsidian 必须输入序号、多账号必须挑、本地目录不再有静默默认值）。这是给安装人员/客户在 Windows 终端里用的，不需要聊天。
 
-> **权限澄清（避免误解）**：本技能自动扫描（纯 Python 解密 session.db / contact.db、读链接）**不需要 frida、不需要管理员权限**。只有「从微信进程内存抽密钥」需管理员，已有 `scripts/wechat_key.txt` 文件降级可避开。微信账号目录的自动定位（`list_all_accounts()` → `wechat_bridge.mjs` 的 `findAllAccountDirs()`）在**真实 Windows 上会自动找到、普通用户权限即可**；但若跑在 WorkBuddy 执行沙箱内，沙箱会禁掉注册表读取与全盘扫描，导致返回空——这是「沙箱在拦」，不是「本技能需要权限」。此时引导客户把 `xwechat_files\<账号>` 路径贴出来即可，并如实说明「在您自己电脑上直接跑会自动定位、不用管理员」。
+> **权限澄清（避免误解）**：本技能自动扫描（纯 Python 解密 session.db / contact.db、读链接）**不需要 frida、不需要管理员权限**。只有「从微信进程内存抽密钥」才需管理员。微信账号目录的自动定位（`list_all_accounts()` → `wechat_bridge.mjs` 的 `findAllAccountDirs()`）在**真实 Windows 上会自动找到、普通用户权限即可**；但若跑在 WorkBuddy 执行沙箱内，沙箱会禁掉注册表读取与全盘扫描，导致返回空——这是「沙箱在拦」，不是「本技能需要权限」。此时引导客户把 `xwechat_files\<账号>` 路径贴出来即可，并如实说明「在您自己电脑上直接跑会自动定位、不用管理员」。
 
 1. **存到哪里（落盘位置）**
    - 先探测候选：`python -c "import init_local_config as c; print(c.detect_obsidian_vaults())"` 找 Obsidian vault；本地默认候选 `~/Documents/ImportedContent`。
@@ -143,7 +141,7 @@ START-HERE.bat
 
 - OCR 默认开启，不再询问
 - 默认不要让用户自己配置 `session.db` / `message_dir` / `db_dir`
-- 内置 WCDB 解密模式会自动完成解密和导入，不要求用户手填这些路径
+- 内置 WCDB 解密模式（需本机已取得数据库密钥）会自动完成解密和导入；取不到密钥时改用 Frida 内存路径
 - 微信自动扫描优先面向 Windows 微信 4.x：`xwechat_files/<账号>/db_storage`、`Weixin.exe`
 
 ## 工作流
@@ -209,7 +207,7 @@ python3 scripts/run_wechat_router_pipeline.py
 **特性**
 - 纯只读：只 SELECT，绝不写入 / 删除 / 发送任何微信数据。
 - 自动发现 Windows 微信 4.x 账号目录（`xwechat_files/<账号>/db_storage`）。
-- 微信运行且已登录时，查看器**打开即自动提取**数据库密钥（走 `wx_key.dll`），**普通用户无需手动输入任何密钥**。仅在开发者调试时，才可在页面折叠的「高级」区手动粘贴密钥，或在 config 里配置 `key_file` 指定密钥文件（`key_file` 也是由提取工具生成的，不是让人手敲的 64 位 hex）。
+- 微信运行且已登录时，查看器会尝试自动提取数据库密钥（走 `wx_key.dll`；微信 4.1.4+ 该 DLL 可能失效，失败不影响 Frida 消息路径）。仅在开发者调试时，才可在页面折叠的「高级」区手动粘贴密钥，或在 config 里配置 `key_file` 指定密钥文件（`key_file` 也是由提取工具生成的，不是让人手敲的 64 位 hex）。
 - 会话列表（全部 / 私聊 / 群聊）+ 消息气泡（自己靠右、对方靠左）+ 关键词搜索。
 - 多账号机器：默认进“最近登录（mtime 最新）”的账号；为免进错号，**多账号时应先问客户确认哪个微信**，再用环境变量 `VIEWER_WXID=<微信号>` 或 `config.json` 里的 `wechat.selected_account_wxid` 精确绑定到那个号。
 
@@ -223,7 +221,7 @@ python3 scripts/run_wechat_router_pipeline.py
 
 **前提**
 - 需安装 Node.js（https://nodejs.org）与 Python 3（含 `cryptography`、`zstandard`；若要用内存提取消息内容，还需 `frida>=16.0`，见 `requirements.txt`）。
-- 解密与查询已完全脱离 WxLens 原生库，不再因 DLL（`wcdb_api.dll`/`WCDB.dll`）崩溃而失败；Windows 端自动提取密钥**无需关闭 SIP**（通过独立的 `wx_key.dll` 注入，它不触发那个反盗用崩溃）。若自动提取失败，请按页面提示排查（微信是否在运行并登录 / 是否执行过 `npm install` / macOS 是否关 SIP），**不要**让客户去手动粘贴 64 位 hex 密钥——普通用户没有那段密钥，那只是开发者调试入口。
+- 解密与查询已完全脱离 WxLens 原生库，不再因 DLL（`wcdb_api.dll`/`WCDB.dll`）崩溃而失败；Windows 端自动提取密钥通过独立的 `wx_key.dll` 注入（微信 4.1.4+ 可能失效，属已知限制）。若自动提取失败，可改用「消息内容提取（Frida 内存路径）」拿聊天链接，或按页面提示排查（微信是否在运行并登录 / 是否执行过 `npm install`）。**不要**让客户去手动粘贴 64 位 hex 密钥——普通用户没有那段密钥，那只是开发者调试入口。
 
 ## 消息内容提取（Frida 内存路径）
 
@@ -262,23 +260,18 @@ python scripts/frida_route/import_frida_links.py
 
 `import_frida_links.py` 读取 `categorized_urls.json`，按分类路由导入（落点由 config 的 Obsidian vault / 本地目录决定）：`xiaohongshu`→小红书 importer、`mp.weixin`→公众号 importer、`feishu`→飞书 importer；`kdocs`/其它类本 skill 暂无对应 importer 会跳过。用 `output/imported_frida_links.json` 记录已导入 URL 去重，重复运行只补新链接。
 
+**平台导入依赖提示**：
+- 飞书（`feishu`）：导入需 Playwright 的 Chromium 浏览器。若缺失会报错并提示，运行 `npx playwright install chromium` 即可（Node 依赖需先 `npm install`）。
+- 小红书长链（`xhslink` 短链无需登录态）：`xiaohongshu.com/discovery/...` 等长链需本机 Chrome 登录过小红书、`browser_cookie3` 才能读到 cookie；短链 `xhslink.com/...` 已验证可成功。
+- 金山文档（`kdocs`）：本 skill 暂无对应 importer，会自动跳过。
+
 ### 与磁盘解密的关系
 - `session.db` / `contact.db`：继续走纯 Python 磁盘解密（`wcdb_decrypt.py`），稳定可用。
 - `message_0.db` 等消息库：磁盘解密大量页失败时，**改用上面 Frida 路径**；导出的明文 `.db` 可直接用 `sqlite3` 打开查询。
 - 本 `frida_route/` 目录已**提交进 git**，重装 skill 不会再丢失（以前需要手动备份到 `C:\Users\Administrator\.workbuddy\backups\`）。
 
-### 密钥降级
-实时提取密钥有 ~30s 超时风险，因此优先用 `key_file` 降级：`scripts/wechat_key.txt`（由提取工具生成，形如 `x'f82d0da4…e495'`）。Frida 路径本身不依赖密钥——它读的是内存明文，所以即使密钥提取失败，内存扫描依然能导出消息内容。
-
-**内置 `wx_key.dll` 在微信 4.1.4+ 会失效**：腾讯从 4.1.4 起改了 `Weixin.dll` 里 WCDB 设密钥函数（`sqlcipher_codec_ctx_set_cipher`）的内部结构，内置 DLL 的特征码匹配不到 → hook 注入成功但永远轮不到 key → 30s 超时。这不是前台账号问题，换同一条 DLL 重试必败。此时改用**维护中的外部提取器**产出 `wechat_key.txt`，pipeline 会自动回退读取（无需手动传 `--key`）：
-- `wx_key`（ycccccccy，仓库 `github.com/ycccccccy/wx_key`）：会**自动检测微信版本并联网下载匹配 DLL**，最新版若已收录 4.1.11.x 特征码，双击即出 key（最省事）。
-- `ASWLaunchs/wx_key`（仓库 `github.com/ASWLaunchs/wx_key`）：宣称支持所有微信 4.x 版本。
-- 注意：工具目录**不要含中文字符**，否则 DLL 加载失败。
-- 拿到 key 后务必验证它能解**目标账号**的库（见下"多账号各自密钥"），不能想当然。
-
-**多账号 = 多密钥（4.x 三账号同进程）**：每个 `xwechat_files\<wxid>\db_storage` 有**各自独立的库密钥**，不是"当前登录微信"那一把。提取器抓到的是当时在开库的那个账号的 key。所以：
-1. 提取前先把**目标账号**切到前台、打开它的几个聊天，使其 DB 打开、密钥驻留内存（社区提示：密钥仅在登录后一小段窗口内全部驻留，久未访问的库密钥会被微信从内存清除——尽早提取）。
-2. 把 key 写进 `scripts/wechat_key.txt` 后，用 `python wcdb_decrypt.py --diagnose --key <key> --in "...\wxid_目标\db_storage\session\session.db"` 验证 page1 的 HMAC 是否命中；命中才是该账号的正确密钥。若解密失败，说明抓到的是别的账号的 key，需重新提取或换目标账号前台。
+### 关于密钥
+Frida 内存提取**不依赖数据库密钥**——它读的是微信进程内存里的明文 SQLite 页，所以无需处理密钥提取、也无需配置 `scripts/wechat_key.txt`。这使它成为当前最稳妥的取链接路径。
 
 ## 输出要求
 
