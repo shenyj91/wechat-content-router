@@ -331,6 +331,7 @@ if (CHAT_USERNAME && CHAT_USERNAME.length > 0) {
     send({type: "status", msg: "按 talker 过滤：" + CHAT_USERNAME});
     const totalBefore = allUrls.size;
     const kept = new Set();
+    let talkerStringSeen = 0;  // 机制是否可用：是否解析到过字符串形式的 talker（filehelper / wxid_ / gh_ 等）
     for (const db of foundDbs) {
         if (!db.tables.some(t => /msg/i.test(t) || /message/i.test(t) || /chat/i.test(t))) continue;
         const pageSize = (db.pageSize && db.pageSize > 0) ? db.pageSize : 4096;
@@ -355,9 +356,11 @@ if (CHAT_USERNAME && CHAT_USERNAME.length > 0) {
                 let cols;
                 try { cols = parseRecordColumns(arr, cellOff, pageType); } catch (e) { continue; }
                 if (!cols) continue;
-                const isTalker = cols.some(c => typeof c === "string" && c === CHAT_USERNAME);
+                const strCols = cols.filter(c => typeof c === "string" && c.length > 0);
+                if (strCols.some(c => c === "filehelper" || c === "newsapp" || /^wxid_/.test(c) || /^gh_/.test(c))) talkerStringSeen++;
+                const isTalker = strCols.some(c => c === CHAT_USERNAME);
                 if (!isTalker) continue;
-                const recordText = cols.filter(c => typeof c === "string").join(" ");
+                const recordText = strCols.join(" ");
                 for (const u of allUrls) {
                     const bare = u.replace(/^https?:\/\//, "");
                     if (recordText.includes(u) || recordText.includes(bare)) kept.add(u);
@@ -366,10 +369,17 @@ if (CHAT_USERNAME && CHAT_USERNAME.length > 0) {
         }
     }
     if (kept.size > 0) {
+        // 命中：只留指定会话的链接
         allUrls.clear();
         for (const u of kept) allUrls.add(u);
         send({type: "filter_info", chat_username: CHAT_USERNAME, kept: kept.size, total: totalBefore, applied: true});
+    } else if (talkerStringSeen > 0) {
+        // 机制可用（能识别字符串 talker），但指定会话此刻没在微信里打开 → 尊重选择，不回退全部
+        allUrls.clear();
+        send({type: "filter_info", chat_username: CHAT_USERNAME, kept: 0, total: totalBefore, applied: true, respected: true,
+              hint: "指定会话未驻留内存：请先在微信打开『" + CHAT_USERNAME + "』会话，再运行扫描"});
     } else {
+        // 机制不可用（talker 存成整数 TalkerId，无法识别）→ 降级回退全部，不阻断主链路
         send({type: "filter_info", chat_username: CHAT_USERNAME, kept: 0, total: totalBefore, applied: false});
     }
 }

@@ -261,7 +261,10 @@ python scripts/frida_route/import_frida_links.py
 
 - 手动跑也可显式指定：`python scripts/frida_route/run_frida_scan.py --chat-username filehelper`
 - 过滤结果写在 `output/filter_info.json`（`applied` / `kept` / `total`），导入时会打印。
-- **注意（已知版本适配点）**：微信 4.x 消息库的 `talker` 存储方式随版本变化——有的是字符串 `filehelper`，有的存成整数 `TalkerId` 再查联系人表。若 `filter_info.applied=false`（过滤结果为 0、回退为全部链接），说明当前版本的 talker 没被识别到。请在你的机器上确认 4.1.11 的消息库结构，或暂时把 `chat_username` 留空以不过滤。这不影响其他功能，只是过滤没生效。
+- **注意（已知版本适配点）**：微信 4.x 消息库的 `talker` 存储方式随版本变化——有的是字符串 `filehelper`，有的存成整数 `TalkerId` 再查联系人表。
+  - 若 `filter_info.applied=false`（过滤结果为 0、回退为全部链接）：说明当前版本的 talker 是**整数 `TalkerId` 形式、机制无法识别**→ 降级回退全部，不阻断。请在你的机器确认 4.1.11 消息库结构，或暂时把 `chat_username` 留空以不过滤。
+  - 若 `filter_info.applied=true` 且 `kept=0`（但 `hint` 有内容）：说明**机制可用（识别到字符串 talker），只是指定会话此刻没在微信里打开、未驻留内存**→ 脚本**严格尊重选择、不回退其他会话**，并提示你先在微信打开该会话再扫。这正是主链路「指定会话」的应有行为。
+  - 主链路是「客户在指定会话发链接 → 只提取该会话」，所以指定会话一经配置就严格隔离，不会把其他会话的链接混进来。
 
 输出在 `scripts/frida_route/output/`：`databases.json`（含每个内存库真实的 `page_size` / `reserved`，磁盘上读不到）、`urls.txt`、`categorized_urls.json`（按 xiaohongshu / mp.weixin / feishu / kdocs / other 分类）、`keyword_hits.json`、`memdb/*.db`。
 

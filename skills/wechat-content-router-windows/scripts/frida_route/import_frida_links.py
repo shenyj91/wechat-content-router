@@ -98,10 +98,13 @@ def main():
     # 报告扫描阶段的 talker 过滤结果（filehelper 等）
     fi = load_json(HERE / "output" / "filter_info.json", {})
     if fi:
-        if fi.get("applied"):
+        if fi.get("applied") and fi.get("kept", 0) > 0:
             print(f"[*] 扫描已按会话 {fi.get('chat_username')} 过滤：保留 {fi.get('kept')}/{fi.get('total')} 条链接")
+        elif fi.get("applied") and fi.get("respected"):
+            print(f"[!] 已严格按会话 {fi.get('chat_username')} 过滤，但 0 命中（该会话未驻留内存）——未导入其他会话的链接。")
+            print(f"    → {fi.get('hint', '请先在微信打开该会话，再运行扫描')}")
         else:
-            print(f"[!] 扫描未匹配到会话 {fi.get('chat_username')} 的链接，已回退为全部 {fi.get('total')} 条（如需严格过滤请确认微信 4.1.11 消息库 talker 存储方式）")
+            print(f"[!] 扫描未匹配到会话 {fi.get('chat_username')} 的链接，已回退为全部 {fi.get('total')} 条（talker 机制不可用，可能为整数 TalkerId 形式）")
     state = load_json(STATE_PATH, {})
     done = set(state.get("imported_urls", []))
 
