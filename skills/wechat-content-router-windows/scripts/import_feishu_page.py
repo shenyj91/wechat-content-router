@@ -119,9 +119,20 @@ def render_page(url: str, pdf_path: Path | None = None) -> dict:
     command = [node_cmd, str(RENDER_SCRIPT_PATH), url]
     if pdf_path is not None:
         command.append(str(pdf_path))
-    result = subprocess.run(command, capture_output=True, text=True)
+    # cwd 固定到脚本所在目录（scripts/），并注入 skill 的 node_modules，
+    # 确保无论从哪个目录运行都能解析到 playwright（ESM import 按脚本位置向上查找，
+    # 这里再设 cwd/NODE_PATH 双保险）。
+    script_dir = RENDER_SCRIPT_PATH.parent
+    skill_node_modules = script_dir.parent / "node_modules"
+    env = dict(os.environ)
+    if skill_node_modules.exists():
+        env["NODE_PATH"] = str(skill_node_modules)
+    result = subprocess.run(command, capture_output=True, text=True, cwd=str(script_dir), env=env)
     if result.returncode != 0:
         message = (result.stderr or result.stdout or "").strip()
+        if "Executable doesn't exist" in message or "chromium" in message.lower() or "playwright" in message.lower():
+            message += ("\n[提示] 飞书渲染依赖 Playwright 的 Chromium。请在该 skill 目录运行："
+                        " npm i playwright && npx playwright install chromium")
         raise RuntimeError(message or "Feishu page render failed")
     try:
         return json.loads(result.stdout)

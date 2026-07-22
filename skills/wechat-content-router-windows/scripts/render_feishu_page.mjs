@@ -7,7 +7,14 @@ if (!url) {
   process.exit(1);
 }
 
-const browser = await chromium.launch({ headless: true });
+let browser;
+try {
+  browser = await chromium.launch({ headless: true });
+} catch (err) {
+  console.error('[Feishu render] 启动 Chromium 失败：' + (err && err.message ? err.message : err));
+  console.error('[Feishu render] 若提示找不到浏览器，请在该 skill 目录运行：npx playwright install chromium');
+  process.exit(1);
+}
 const context = await browser.newContext({
   viewport: { width: 1440, height: 2200 },
   locale: 'zh-CN',

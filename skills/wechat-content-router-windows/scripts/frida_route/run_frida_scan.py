@@ -162,31 +162,116 @@ for (let i = 0; i < ranges.length; i++) {
 }
 send({type: "scan_done", found: foundDbs.length});
 
-// Phase 2: URLs
-send({type: "status", msg: "Scanning URLs..."});
-const URL_PATTERN = "68 74 74 70 73 3f 3a 2f 2f";
+// Phase 2: URLs — 微信内存里 URL 多为 UTF-16 LE 且常无 http(s):// 前缀
+// （实测：原 ASCII "https?://" 扫描命中 0 条。这里同时覆盖 UTF-16 + 无协议前缀）
+send({type: "status", msg: "Scanning URLs (UTF-16 aware)..."});
 const allUrls = new Set();
-for (let i = 0; i < ranges.length; i++) {
-    const range = ranges[i];
-    if (range.size > 50 * 1024 * 1024) continue;
+
+function isUrlStopper(code) {
+    return code === 0 || code === 10 || code === 13 || code === 32 ||
+           code === 34 || code === 39 || code === 60 || code === 62 ||
+           code === 92 || code === 124;
+}
+function readUtf16Url(addr, maxChars) {
+    const buf = addr.readByteArray(maxChars * 2 + 4);
+    const arr = new Uint8Array(buf);
+    let url = '';
+    for (let j = 0; j + 1 < arr.length; j += 2) {
+        const code = arr[j] | (arr[j + 1] << 8);
+        if (isUrlStopper(code)) break;
+        if (code < 32 || code > 126) break;
+        url += String.fromCharCode(code);
+    }
+    return url;
+}
+function readAsciiUrl(addr, maxChars) {
+    const buf = addr.readByteArray(maxChars);
+    const arr = new Uint8Array(buf);
+    let url = '';
+    for (let j = 0; j < arr.length; j++) {
+        const code = arr[j];
+        if (isUrlStopper(code)) break;
+        if (code < 32 || code > 126) break;
+        url += String.fromCharCode(code);
+    }
+    return url;
+}
+// 从域名 token 命中地址向前后扩展，拼出完整 URL（处理无协议前缀）
+function expandAround(addr, isUtf16, ctx) {
     try {
-        const urlMatches = Memory.scanSync(range.base, range.size, URL_PATTERN);
-        for (const m of urlMatches) {
-            try {
-                const buf = m.address.readByteArray(300);
-                const arr = new Uint8Array(buf);
-                let url = '';
-                for (let j = 0; j < 300; j++) {
-                    const c = arr[j];
-                    if (c === 0 || c === 10 || c === 13 || c === 32 || c === 34 || c === 39 || c === 60 || c === 62 || c === 92 || c === 124) break;
-                    if (c < 32 || c > 126) break;
-                    url += String.fromCharCode(c);
-                }
-                if (url.length > 15) allUrls.add(url);
-            } catch(e) {}
+        const pre = isUtf16
+            ? addr.sub(ctx * 2).readByteArray(ctx * 2 + 4)
+            : addr.sub(ctx).readByteArray(ctx + 4);
+        const arr = new Uint8Array(pre);
+        let preStr = '';
+        if (isUtf16) {
+            let lastStop = -1;
+            for (let j = 0; j + 1 < arr.length; j += 2) {
+                if (isUrlStopper(arr[j] | (arr[j + 1] << 8))) lastStop = j;
+            }
+            const lead = (lastStop >= 0) ? (lastStop + 2) : 0;
+            for (let j = lead; j + 1 < arr.length; j += 2) {
+                const code = arr[j] | (arr[j + 1] << 8);
+                if (code < 32 || code > 126) break;
+                preStr += String.fromCharCode(code);
+            }
+        } else {
+            let lastStop = -1;
+            for (let j = 0; j < arr.length; j++) {
+                if (isUrlStopper(arr[j])) lastStop = j;
+            }
+            const lead = (lastStop >= 0) ? (lastStop + 1) : 0;
+            for (let j = lead; j < arr.length; j++) {
+                if (arr[j] < 32 || arr[j] > 126) break;
+                preStr += String.fromCharCode(arr[j]);
+            }
         }
-    } catch(e) {}
-    if (i % 500 === 0) send({type: "url_progress", current: i, total: ranges.length, urls: allUrls.size});
+        const post = isUtf16 ? readUtf16Url(addr, ctx) : readAsciiUrl(addr, ctx);
+        const full = (preStr + post).replace(/\s+/g, '');
+        if (full.length < 12) return '';
+        return full.startsWith('http') ? full : ('https://' + full.replace(/^\/+/, ''));
+    } catch (e) { return ''; }
+}
+
+// 2a. 协议前缀：ASCII + UTF-16 LE
+const PROTO_PATTERNS = [
+    { hex: "68 74 74 70 73 3f 3a 2f 2f", utf16: false },
+    { hex: "68 74 74 70 3a 2f 2f",       utf16: false },
+    { hex: "68 00 74 00 74 00 70 00 73 00 3f 00 3a 00 2f 00 2f 00", utf16: true },
+    { hex: "68 00 74 00 74 00 70 00 3a 00 2f 00 2f 00",             utf16: true },
+];
+for (const pat of PROTO_PATTERNS) {
+    for (let i = 0; i < ranges.length; i++) {
+        const range = ranges[i];
+        if (range.size > 50 * 1024 * 1024) continue;
+        try {
+            const matches = Memory.scanSync(range.base, range.size, pat.hex);
+            for (const m of matches) {
+                const url = pat.utf16 ? readUtf16Url(m.address, 400) : readAsciiUrl(m.address, 400);
+                if (url.length > 12) allUrls.add(url);
+            }
+        } catch (e) {}
+    }
+}
+// 2b. 无协议前缀：扫域名 token（ASCII + UTF-16），命中处前后扩展
+const DOMAIN_TOKENS = ["mp.weixin.qq.com", "xiaohongshu.com", "xhslink.com",
+    "feishu.cn", "kdocs.cn", "douban.com", "bilibili.com", "zhihu.com"];
+for (const tok of DOMAIN_TOKENS) {
+    const asciiHex = tok.split('').map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ');
+    const utf16Hex = tok.split('').map(c => c.charCodeAt(0).toString(16).padStart(2, '0') + ' 00').join(' ');
+    for (const pat of [{ hex: asciiHex, utf16: false }, { hex: utf16Hex, utf16: true }]) {
+        for (let i = 0; i < Math.min(ranges.length, 3000); i++) {
+            const range = ranges[i];
+            if (range.size > 50 * 1024 * 1024) continue;
+            try {
+                const matches = Memory.scanSync(range.base, range.size, pat.hex);
+                for (const m of matches) {
+                    const url = expandAround(m.address, pat.utf16, 80);
+                    if (url.length > 15) allUrls.add(url);
+                }
+            } catch (e) {}
+        }
+    }
 }
 send({type: "urls", count: allUrls.size, urls: Array.from(allUrls).sort()});
 
