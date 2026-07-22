@@ -20,3 +20,7 @@ node_modules/
 
 # Frida 内存扫描产物（链接/库 dump，不进仓库）
 scripts/frida_route/output/
+
+# 客户本地配置（每台机器不同，不进仓库；首次运行由向导生成）
+scripts/config.json
+scripts/wechat_key.txt

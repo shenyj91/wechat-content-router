@@ -18,7 +18,7 @@ description: >
 
 1. 不要先讲大段说明
 2. 不要在聊天里替用户填写路径，也不要把“其他补充...”当成真实文件夹选择
-3. 应自动切到本地辅助配置脚本，不再在聊天里代填路径
+3. 应在聊天里逐项问客户（见「开工前必须向客户确认的三件事」），拿到明确答复后用 `init_local_config.py` 的命令行参数**非交互**写配置。**不要运行会卡在 `input()` 的 `bootstrap_config.py` / 交互式向导**——在聊天里客户无法回答子进程的 `input()`，助手一旦去跑它就会卡住、或偷用探测值静默写配置（这正是「没给我选择的权利」的根因）。OCR 默认开启不再询问
 4. 说明真实配置向导会先让用户选“本地 / Obsidian”，默认 OCR 开启；Obsidian 路径会先**探测出候选**，但**必须让客户确认**后才写入（见下文「开工前必须向客户确认的三件事」）
 5. 如果用户选择微信自动扫描，先让他选数据源：
    - 内置 WCDB 解密并导入（默认、推荐）：自动解密 `session.db`（会话列表）、`contact.db`（联系人），零原生依赖、稳定可用
@@ -28,6 +28,10 @@ description: >
 ## 开工前必须向客户确认的三件事（强制）
 
 > **任何**一次「从微信取内容 → 落到某处」的操作（首次配置、日常扫描、手动导入都一样），都必须先和客户对齐下面三点。**禁止**靠"自动探测"直接替客户定下来——探测只用来给出候选默认值，最终要客户明确说"可以 / 就是这个 / 换一个"。探测到的值不写进 `config.json` 之前，必须先问。
+>
+> **两条配置入口，别混用：**
+> - **聊天 / 专家入口（WorkBuddy 里召唤本专家）**：助手在**聊天里逐项问**客户（用下面的探测命令给出候选），拿到明确答复后，用 `init_local_config.py` 的**命令行参数非交互写配置**（命令见第 3 点末尾）。**绝不要在聊天里运行 `bootstrap_config.py` / `interactive_config`**——它们依赖子进程的 `input()`，客户在聊天里答不了，助手跑去跑就会卡住或偷用探测值静默写配置（"没给我选择的权利"的根因）。
+> - **终端入口（Windows 直接双击 `CONFIG-WIZARD.bat` / `START-HERE.bat`）**：走 CLI 交互向导 `interactive_config`，已**强制显式选择**（Obsidian 必须输入序号、多账号必须挑、本地目录不再有静默默认值）。这是给安装人员/客户在 Windows 终端里用的，不需要聊天。
 
 1. **存到哪里（落盘位置）**
    - 先探测候选：`python -c "import init_local_config as c; print(c.detect_obsidian_vaults())"` 找 Obsidian vault；本地默认候选 `~/Documents/ImportedContent`。
@@ -43,9 +47,25 @@ description: >
 3. **确认数据源是客户的「文件传输助手」**
    - 默认从**文件传输助手**（会话 id = `filehelper`）读取链接——因为客户通常是把链接转发到文件传输助手再统一路由。
    - 必须问客户：**"从你的【文件传输助手】读链接，对吗？还是想固定某个具体聊天？"**
-   - 确认后写入 `wechat.chat_username`（默认 `filehelper`）；若客户指定别的会话，记下来并让客户确认会话名拼写无误。
+   - 若客户说"指定某个聊天"，**必须追问"是哪个会话？（会话名或 id）"并拿到明确会话名**——不能只问"要不要指定"就替客户定一个。确认后写入 `wechat.chat_username`（默认 `filehelper`）；让客户确认会话名拼写无误。
 
-确认完三点，把摘要（存哪 / 哪个微信 / 文件传输助手）回显给客户，再进入实际扫描或导入。这三问同样写进了 `scripts/init_local_config.py` 的首次配置向导（`bootstrap_config.py` / `START-HERE.bat`），客户走 CLI 入口也会被问到。
+**收尾（拿到三问答复后，非交互写配置）**
+
+助手用一行命令写入，**不要跑 `bootstrap_config.py`**（会卡在 `input()`）：
+
+```bash
+# Obsidian 场景
+python scripts/init_local_config.py --mode obsidian --vault-root "<第1问选中的仓库路径>" \
+  --wechat-enabled --chat-username "<filehelper 或 客户给的会话名>" \
+  --account-dir "<第2问选中的 account_dir>" --default-action wechat_monitor --monitor-mode manual
+
+# 本地文件夹场景：把上面前两个参数换成这一行
+#   --mode local --local-root "<第1问选中的本地目录>"
+```
+
+写完后读取 `scripts/config.json`，把摘要（存哪 / 哪个微信 / 文件传输助手或指定会话）回显给客户确认，再进入实际扫描或导入。
+
+确认完三点，把摘要（存哪 / 哪个微信 / 文件传输助手或指定会话）回显给客户，再进入实际扫描或导入。这三问同样写进了 `scripts/init_local_config.py` 的 CLI 向导（`bootstrap_config.py` / `START-HERE.bat` / `CONFIG-WIZARD.bat`），客户在 Windows 终端走 CLI 入口也会被强制逐项选择。
 
 当前 Windows OCR 后端：
 
@@ -97,10 +117,15 @@ START-HERE.bat
 - 没有：先进入首次配置向导
 - 已有：直接进入使用菜单
 
-说明一下：
+说明一下（安装后如何自动拉起配置）：
 
-- 当前 skill 安装机制本身没有“安装后立刻自动执行脚本”的钩子
-- 所以最接近“安装后自动进配置”的做法，就是**首次启动时自动进入配置向导**
+> **WorkBuddy 当前没有「技能安装后立刻自动执行脚本」的钩子**——装完技能不会自己弹配置，必须有人进到这条入口。要「装完即拉起配置、客户无需先打字」，二选一：
+>
+> - **方式一（推荐，最省事 · 安装后零手动）**：装完技能后，直接**双击技能目录里的 `CONFIG-WIZARD.bat`**（Windows）。它会自动装依赖并立刻启动配置向导，依次问「存哪里 / 哪个微信 / 文件传输助手」。这就是给安装人员/客户用的「装完即配」一键入口。
+> - **方式二（在 WorkBuddy 里）**：召唤「微信内容路由（Windows）」专家。本技能的 `agents/openai.yaml` 已把 `default_prompt` 设为「**被召唤即无条件开始配置**」——专家一激活就会主动发起三问，**不需要客户先打任何字**，点一下发送即可开始；若已配置则直接进入日常使用。
+>
+> 另外，无论走哪条入口，`scripts/use_router.py` 与 `START-HERE.bat` 都会在**检测到没有 `config.json` 时自动进入配置向导**（`ensure_config()` 兜底），所以第一次进菜单也一定会先配。
+
 - Windows 用户可以直接打开 `START-HERE.bat`
 
 首次配置时会依次确定：
