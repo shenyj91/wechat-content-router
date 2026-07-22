@@ -271,8 +271,8 @@ python scripts/frida_route/import_frida_links.py
 实时提取密钥有 ~30s 超时风险，因此优先用 `key_file` 降级：`scripts/wechat_key.txt`（由提取工具生成，形如 `x'f82d0da4…e495'`）。Frida 路径本身不依赖密钥——它读的是内存明文，所以即使密钥提取失败，内存扫描依然能导出消息内容。
 
 **内置 `wx_key.dll` 在微信 4.1.4+ 会失效**：腾讯从 4.1.4 起改了 `Weixin.dll` 里 WCDB 设密钥函数（`sqlcipher_codec_ctx_set_cipher`）的内部结构，内置 DLL 的特征码匹配不到 → hook 注入成功但永远轮不到 key → 30s 超时。这不是前台账号问题，换同一条 DLL 重试必败。此时改用**维护中的外部提取器**产出 `wechat_key.txt`，pipeline 会自动回退读取（无需手动传 `--key`）：
-- `wx_key`（ycccccccy）：会**自动检测微信版本并联网下载匹配 DLL**，最新版若已收录 4.1.11.x 特征码，双击即出 key。
-- `ASWLaunchs/wx_key`：宣称支持所有微信 4.x 版本。
+- `wx_key`（ycccccccy，仓库 `github.com/ycccccccy/wx_key`）：会**自动检测微信版本并联网下载匹配 DLL**，最新版若已收录 4.1.11.x 特征码，双击即出 key（最省事）。
+- `ASWLaunchs/wx_key`（仓库 `github.com/ASWLaunchs/wx_key`）：宣称支持所有微信 4.x 版本。
 - 注意：工具目录**不要含中文字符**，否则 DLL 加载失败。
 - 拿到 key 后务必验证它能解**目标账号**的库（见下"多账号各自密钥"），不能想当然。
 
