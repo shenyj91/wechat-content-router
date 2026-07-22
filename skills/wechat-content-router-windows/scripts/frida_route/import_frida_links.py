@@ -133,8 +133,24 @@ def main():
                 results.append({"category": cat, "url": u, "status": "ok", "result": r})
                 print(f"[OK]   {cat}: {u[:120]}")
             except Exception as e:
-                results.append({"category": cat, "url": u, "status": "error", "error": str(e)})
-                print(f"[ERR]  {cat}: {u[:120]} -> {e}")
+                # 小红书页面暂不可浏览（XHSPageUnavailableError，如 discovery 长链需登录态）：
+                # 标记跳过并加入 done，避免每次 Frida 扫描全内存都反复重试失败。
+                # 还原原始 import_latest_wechat_xhs.py 的 processed_keys.add 行为。
+                xhs_unavailable = (
+                    cat == "xiaohongshu"
+                    and getattr(mod, "XHSPageUnavailableError", None) is not None
+                    and isinstance(e, mod.XHSPageUnavailableError)
+                )
+                if xhs_unavailable:
+                    done.add(u)
+                    results.append({
+                        "category": cat, "url": u, "status": "skipped",
+                        "reason": "xhs_page_unavailable", "error": str(e),
+                    })
+                    print(f"[SKIP] {cat}（小红书页面暂不可浏览，已标记跳过，下次不再重试）: {u[:120]}")
+                else:
+                    results.append({"category": cat, "url": u, "status": "error", "error": str(e)})
+                    print(f"[ERR]  {cat}: {u[:120]} -> {e}")
 
     skipped = 0
     for cat in SKIP_CATEGORIES:
