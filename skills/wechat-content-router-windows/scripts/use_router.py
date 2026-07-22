@@ -231,10 +231,25 @@ def main():
 
 def select_session(config: dict):
     wechat = config.get("wechat") or {}
+    source_mode = wechat.get("source_mode") or "frida_memory"
     account_dir = wechat.get("account_dir")
-    if not account_dir:
-        print("未配置微信账号目录，请先重新配置。")
-        return None
+
+    # Frida 内存扫描模式：扫描正在运行的微信进程内存，无需账号目录与密钥，
+    # 直接让客户输入要监控的会话标识即可。
+    if source_mode == "frida_memory" or not account_dir:
+        current = wechat.get("chat_username") or "filehelper"
+        print(f"\n当前是 Frida 内存扫描模式（扫描正在运行的微信进程内存，无需密钥）。")
+        print(f"当前监控会话：{current}")
+        print("请输入要改成的会话标识（Frida 会按它过滤链接）：")
+        print("  示例：filehelper（文件传输助手）/ wxid_xxx / gh_xxxx（公众号）/ 群或联系人昵称")
+        print("  留空则取消修改。")
+        raw = input("会话标识：").strip()
+        if not raw:
+            print("已取消，未修改。")
+            return None
+        return raw
+
+    # 解密模式：需要账号目录与密钥，走原逻辑
     decrypt_module = load_importer("wechat_win_decrypt", SCRIPT_DIR / "wechat_win_decrypt.py")
     cached_key = wechat.get("_cached_key")
     if not cached_key:

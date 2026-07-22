@@ -489,6 +489,7 @@ def interactive_config() -> dict:
     monitor_mode = "manual"
     interval_seconds = 900
     chat_username = "filehelper"
+    account_dir = ""
     db_dir = ""
     wechat_process = "Weixin.exe"
     session_db = ""
@@ -526,9 +527,10 @@ def interactive_config() -> dict:
             minutes = prompt_text("请输入轮询间隔（分钟）", default="10")
             interval_seconds = max(60, int(float(minutes) * 60))
 
-        if wechat_source_mode == "decrypted_files":
-            print("\n将使用内置 WCDB 解密模块自动解密微信数据库。")
-            print("先自动识别本机微信账号目录，不行再手动选。")
+        # 两种模式都需确认绑定账号（仅标注/识别用，Frida 扫描不依赖目录）
+        if wechat_source_mode in ("decrypted_files", "frida_memory"):
+            print("\n将识别并确认要绑定的微信账号（用于标注与识别）。")
+            print("先自动识别本机微信账号，不行再手动指定目录。")
 
             accounts = []
             account_dir = ""
