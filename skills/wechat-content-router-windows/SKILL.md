@@ -33,13 +33,15 @@ description: >
 > - **聊天 / 专家入口（WorkBuddy 里召唤本专家）**：助手在**聊天里逐项问**客户（用下面的探测命令给出候选），拿到明确答复后，用 `init_local_config.py` 的**命令行参数非交互写配置**（命令见第 3 点末尾）。**绝不要在聊天里运行 `bootstrap_config.py` / `interactive_config`**——它们依赖子进程的 `input()`，客户在聊天里答不了，助手跑去跑就会卡住或偷用探测值静默写配置（"没给我选择的权利"的根因）。
 > - **终端入口（Windows 直接双击 `CONFIG-WIZARD.bat` / `START-HERE.bat`）**：走 CLI 交互向导 `interactive_config`，已**强制显式选择**（Obsidian 必须输入序号、多账号必须挑、本地目录不再有静默默认值）。这是给安装人员/客户在 Windows 终端里用的，不需要聊天。
 
+> **权限澄清（避免误解）**：本技能自动扫描（纯 Python 解密 session.db / contact.db、读链接）**不需要 frida、不需要管理员权限**。只有「从微信进程内存抽密钥」需管理员，已有 `scripts/wechat_key.txt` 文件降级可避开。微信账号目录的自动定位（`list_all_accounts()` → `wechat_bridge.mjs` 的 `findAllAccountDirs()`）在**真实 Windows 上会自动找到、普通用户权限即可**；但若跑在 WorkBuddy 执行沙箱内，沙箱会禁掉注册表读取与全盘扫描，导致返回空——这是「沙箱在拦」，不是「本技能需要权限」。此时引导客户把 `xwechat_files\<账号>` 路径贴出来即可，并如实说明「在您自己电脑上直接跑会自动定位、不用管理员」。
+
 1. **存到哪里（落盘位置）**
    - 先探测候选：`python -c "import init_local_config as c; print(c.detect_obsidian_vaults())"` 找 Obsidian vault；本地默认候选 `~/Documents/ImportedContent`。
    - 把候选读出来展示给客户，问：**"存到这里 OK 吗？还是要换路径？"**
    - 客户确认/给出的路径写入 `storage.mode`（`obsidian` / `local`）+ `vault_root` / `local_root`，并回显确认。
 
 2. **确认用哪个微信（账号）**
-   - 列出本机所有微信账号：`python -c "import wechat_win_decrypt as w; print(w.list_all_accounts())"`（返回每个 `xwechat_files/<账号>` 的 `account_dir` / `wxid` / `mtime`）。
+   - 列出本机所有微信账号：`python -c "import wechat_win_decrypt as w; print(w.list_all_accounts())"`（返回每个 `xwechat_files/<账号>` 的 `account_dir` / `wxid` / `mtime`）。若返回空列表，说明当前运行环境（沙箱）禁了注册表读取与全盘扫描，按上方「权限澄清」引导客户把 `xwechat_files\<账号>` 路径贴出来，不要说成"需要权限"。
    - **多账号时，必须让客户从列表里挑一个**，绝不能默认绑"最近活跃"那个就开跑。
    - **单账号时也要展示出来问："就是这一个微信账号对吧？"** 让客户确认。
    - 选中的 `account_dir` 写入 `wechat.account_dir`，`wxid` 写入 `wechat.selected_account_wxid` / `selected_account_label`。
