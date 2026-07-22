@@ -14,14 +14,20 @@ def normalize_path(value: str) -> str:
     return str(Path(value).expanduser().resolve()) if value else ""
 
 
-def prompt_choice(title: str, options: list[tuple[str, str]], default_key: str | None = None) -> str:
+def prompt_choice(title: str, options: list[tuple[str, str]], default_key: str | None = None, require_explicit: bool = False) -> str:
     print(f"\n{title}")
-    for index, (_, label) in enumerate(options, start=1):
-        print(f"{index}. {label}")
+    for index, (key, label) in enumerate(options, start=1):
+        mark = "（默认）" if (default_key and key == default_key) else ""
+        print(f"{index}. {label}{mark}")
     while True:
-        raw = input(f"请输入序号{'（默认 ' + default_key + '）' if default_key else ''}：").strip()
-        if not raw and default_key:
-            return default_key
+        hint = f"（默认 {default_key}）" if default_key else ""
+        raw = input(f"请输入序号{hint}：").strip()
+        if not raw:
+            if require_explicit:
+                print("请明确输入一个序号后再继续（不能留空）。")
+                continue
+            if default_key:
+                return default_key
         if raw.isdigit():
             idx = int(raw) - 1
             if 0 <= idx < len(options):
@@ -152,7 +158,7 @@ def prompt_obsidian_vault_path() -> str:
         for idx, path in enumerate(detected[:8], start=1):
             options.append((path, f"{path}（自动识别）"))
         options.append(("__browse__", "选择其他文件夹"))
-        choice = prompt_choice("请选择要使用的 Obsidian vault", options, default_key=detected[0])
+        choice = prompt_choice("请选择要使用的 Obsidian vault（必须输入序号，不能留空）", options, default_key=detected[0], require_explicit=True)
         if choice != "__browse__":
             return choice
     return prompt_path("请选择 Obsidian vault 路径", kind="dir")
@@ -468,7 +474,7 @@ def interactive_config() -> dict:
     if mode == "obsidian":
         vault_root = prompt_obsidian_vault_path()
     else:
-        local_root = prompt_path("请选择本地保存目录", default="~/Documents/ImportedContent", kind="dir")
+        local_root = prompt_path("请选择本地保存目录（直接输入完整路径，或输入 B 打开文件夹选择器）", default="", kind="dir")
 
     run_ocr = True
 
@@ -551,9 +557,10 @@ def interactive_config() -> dict:
                     print("\n已识别到多个微信账号，请选一个作为固定绑定账号：")
                     options = [(item["account_dir"], f"{item['wxid']} ({item['account_dir']})") for item in accounts]
                     selected_dir = prompt_choice(
-                        "请选择要绑定的微信账号",
+                        "请选择要绑定的微信账号（必须输入序号，不能留空）",
                         options,
                         default_key=accounts[0]["account_dir"],
+                        require_explicit=True,
                     )
                     selected = next((a for a in accounts if a["account_dir"] == selected_dir), accounts[0])
                     account_dir = selected["account_dir"]
@@ -616,6 +623,14 @@ def cli_config(args) -> dict:
         raise SystemExit("--mode obsidian 时必须提供 --vault-root")
     if args.mode == "local" and not local_root:
         raise SystemExit("--mode local 时必须提供 --local-root")
+    account_dir_norm = normalize_path(args.account_dir) if getattr(args, "account_dir", None) else ""
+    selected_account_wxid = ""
+    selected_account_label = ""
+    if account_dir_norm:
+        _p = Path(account_dir_norm)
+        selected_account_wxid = _p.parent.name if _p.name.lower() == "db_storage" else _p.name
+        selected_account_label = selected_account_wxid
+
     return build_config(
         mode=args.mode,
         vault_root=vault_root,
@@ -626,14 +641,14 @@ def cli_config(args) -> dict:
         interval_seconds=args.interval_seconds,
         wechat_enabled=args.wechat_enabled,
         chat_username=args.chat_username,
-        account_dir=normalize_path(args.account_dir) if getattr(args, "account_dir", None) else "",
+        account_dir=account_dir_norm,
         db_dir=normalize_path(args.db_dir) if getattr(args, "db_dir", None) else "",
         wechat_process=getattr(args, "wechat_process", None) or "Weixin.exe",
         session_db=normalize_path(args.session_db) if args.session_db else "",
         message_dir=normalize_path(args.message_dir) if args.message_dir else "",
         message_table=args.message_table or "",
-        selected_account_wxid="",
-        selected_account_label="",
+        selected_account_wxid=selected_account_wxid,
+        selected_account_label=selected_account_label,
         decrypt_workdir=normalize_path(args.decrypt_workdir) if args.decrypt_workdir else "",
         decrypt_exe=normalize_path(args.decrypt_exe) if args.decrypt_exe else "",
         decrypt_python=normalize_path(args.decrypt_python) if args.decrypt_python else "",
