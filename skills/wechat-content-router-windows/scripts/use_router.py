@@ -81,15 +81,19 @@ def import_manual(raw_text: str):
     return {"type": route_type, "result": importer.import_page(url)}
 
 
-def run_wechat_once():
+def run_wechat_once(scan_seconds: int = None):
     """微信自动扫描：走 Frida 内存提取（按 chat_username 过滤 filehelper），再按分类导入。
 
     注：旧版 decrypted_files 管线依赖数据库密钥，在微信 4.1.4+ 已失效，故这里直接用 Frida。
+    scan_seconds 为 None 时用脚本默认（120s，适合一次性彻底扫描）；realtime 模式传入较短值。
     """
     frida_dir = SCRIPT_DIR / "frida_route"
     print("[*] 步骤1/2：Frida 内存扫描（按 chat_username 过滤 filehelper）…", file=sys.stderr)
+    scan_cmd = [sys.executable, str(frida_dir / "run_frida_scan.py")]
+    if scan_seconds is not None:
+        scan_cmd += ["--seconds", str(scan_seconds)]
     scan = subprocess.run(
-        [sys.executable, str(frida_dir / "run_frida_scan.py")],
+        scan_cmd,
         capture_output=True,
         text=True,
     )
@@ -219,10 +223,14 @@ def main():
                 continue
             if mode == "realtime":
                 interval_seconds = 15
-            print(f"开始持续扫描。轮询间隔：{interval_seconds} 秒。按 Ctrl+C 停止。")
+                realtime_scan = 20  # realtime 每轮扫描较短，尽快捕捉刚发的链接
+            else:
+                realtime_scan = None  # 一次性/手动模式用默认 120s 彻底扫描
+            scan_label = f"{realtime_scan}s/轮" if realtime_scan else "默认120s/轮"
+            print(f"开始持续扫描。轮询间隔：{interval_seconds} 秒，Frida 扫描：{scan_label}。按 Ctrl+C 停止。")
             try:
                 while True:
-                    print(json.dumps(run_wechat_once(), ensure_ascii=False, indent=2))
+                    print(json.dumps(run_wechat_once(scan_seconds=realtime_scan), ensure_ascii=False, indent=2))
                     time.sleep(interval_seconds)
             except KeyboardInterrupt:
                 print("\n已停止持续扫描。")

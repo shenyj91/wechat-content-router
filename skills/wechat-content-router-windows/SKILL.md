@@ -266,6 +266,8 @@ python scripts/frida_route/import_frida_links.py
   - 若 `filter_info.applied=true` 且 `kept=0`（但 `hint` 有内容）：说明**机制可用（识别到字符串 talker），只是指定会话此刻没在微信里打开、未驻留内存**→ 脚本**严格尊重选择、不回退其他会话**，并提示你先在微信打开该会话再扫。这正是主链路「指定会话」的应有行为。
   - 主链路是「客户在指定会话发链接 → 只提取该会话」，所以指定会话一经配置就严格隔离，不会把其他会话的链接混进来。
 
+- **注意（多账号同进程）**：你这台机器是三账号同进程，`talker == "filehelper"` 在三个账号里同名，所以选 `filehelper` 时会**抓到三个账号文件传输助手的链接**（通常无害，且更符合「自己的转发」语义）。若只想限定某一个账号的 filehelper，目前 Frida 扫全进程无法在字符串层面区分同名会话——需用 `wxid_xxx` / `gh_xxx` 这类唯一标识作为 `chat_username`；或接受全账号 filehelper 混合。这是已知限制，不是 bug。
+
 输出在 `scripts/frida_route/output/`：`databases.json`（含每个内存库真实的 `page_size` / `reserved`，磁盘上读不到）、`urls.txt`、`categorized_urls.json`（按 xiaohongshu / mp.weixin / feishu / kdocs / other 分类）、`keyword_hits.json`、`memdb/*.db`。
 
 `import_frida_links.py` 读取 `categorized_urls.json`，按分类路由导入（落点由 config 的 Obsidian vault / 本地目录决定）：`xiaohongshu`→小红书 importer、`mp.weixin`→公众号 importer、`feishu`→飞书 importer；`kdocs`/其它类本 skill 暂无对应 importer 会跳过。用 `output/imported_frida_links.json` 记录已导入 URL 去重，重复运行只补新链接。
