@@ -232,15 +232,58 @@ def list_all_accounts() -> list[dict]:
     return accounts
 
 
-def extract_wechat_key(timeout: int = 30) -> str:
-    """从微信进程提取密钥（需要管理员权限）"""
+def load_cached_key_file() -> str | None:
+    """DLL 提取失败时的降级：从本地密钥文件读取 64hex 密钥。
+
+    适用场景：内置 wx_key.dll 因微信版本/内存布局变化（如 4.1.4+ 改了
+    WCDB 设密钥函数结构）导致 hook 特征码不匹配、永远轮不到 key 时，可改用
+    任意维护中的第三方提取器（wx_key / chatlog_alpha / pc_wechat_exp 等）
+    把 64hex 抓出来写进下面任一处，pipeline 自动回退读取，不再卡死。
+
+    候选文件（按优先级）：
+      - <SCRIPT_DIR>/wechat_key.txt      （推荐：用户粘贴或第三方工具写出）
+      - <SCRIPT_DIR>/wechat_key.json     （{"key": "64hex"}）
+      - <SCRIPT_DIR>/key.tmp             （wx_key 系列工具默认写出的 key.tmp）
+    格式兼容 load_key_from_file：纯 64hex / x'64hex' / JSON{key} / dbkey.txt。
+    """
+    candidates = [
+        SCRIPT_DIR / "wechat_key.txt",
+        SCRIPT_DIR / "wechat_key.json",
+        SCRIPT_DIR / "key.tmp",
+    ]
+    for p in candidates:
+        if p.exists():
+            try:
+                return load_key_from_file(p)
+            except Exception as e:
+                print(f"[fallback] 读取 {p.name} 失败: {e}")
+                continue
+    return None
+
+
+def extract_wechat_key(timeout: int = 30, allow_file_fallback: bool = True) -> str:
+    """从微信进程提取密钥（需要管理员权限）。
+
+    若 DLL 注入提取失败（常见于微信版本/内存布局变化导致 hook 找不到特征码），
+    自动回退到本地密钥文件 wechat_key.txt / wechat_key.json / key.tmp
+    （可由任意第三方提取器写出）。这样即使内置 wx_key.dll 过时，也能用
+    外部维护的提取器拿到密钥后无缝继续。
+    """
     print("正在从微信进程提取密钥（需要管理员权限）...")
-    data = _run_bridge("extract_key", timeout=timeout + 10)
-    key = data.get("key", "")
-    if not key or len(key) != 64:
-        raise RuntimeError(f"提取到的密钥格式不对: {key}")
-    print(f"密钥提取成功: {key[:8]}...")
-    return key
+    try:
+        data = _run_bridge("extract_key", timeout=timeout + 10)
+        key = data.get("key", "")
+        if not key or len(key) != 64:
+            raise RuntimeError(f"提取到的密钥格式不对: {key}")
+        print(f"密钥提取成功: {key[:8]}...")
+        return key
+    except Exception as e:
+        if allow_file_fallback:
+            fb = load_cached_key_file()
+            if fb:
+                print(f"[fallback] DLL 提取失败（{e}），改用本地密钥文件: {fb[:8]}...")
+                return fb
+        raise
 
 
 def load_key_from_file(path) -> str:

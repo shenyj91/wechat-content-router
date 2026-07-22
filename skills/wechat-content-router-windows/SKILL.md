@@ -270,6 +270,16 @@ python scripts/frida_route/import_frida_links.py
 ### 密钥降级
 实时提取密钥有 ~30s 超时风险，因此优先用 `key_file` 降级：`scripts/wechat_key.txt`（由提取工具生成，形如 `x'f82d0da4…e495'`）。Frida 路径本身不依赖密钥——它读的是内存明文，所以即使密钥提取失败，内存扫描依然能导出消息内容。
 
+**内置 `wx_key.dll` 在微信 4.1.4+ 会失效**：腾讯从 4.1.4 起改了 `Weixin.dll` 里 WCDB 设密钥函数（`sqlcipher_codec_ctx_set_cipher`）的内部结构，内置 DLL 的特征码匹配不到 → hook 注入成功但永远轮不到 key → 30s 超时。这不是前台账号问题，换同一条 DLL 重试必败。此时改用**维护中的外部提取器**产出 `wechat_key.txt`，pipeline 会自动回退读取（无需手动传 `--key`）：
+- `wx_key`（ycccccccy）：会**自动检测微信版本并联网下载匹配 DLL**，最新版若已收录 4.1.11.x 特征码，双击即出 key。
+- `ASWLaunchs/wx_key`：宣称支持所有微信 4.x 版本。
+- 注意：工具目录**不要含中文字符**，否则 DLL 加载失败。
+- 拿到 key 后务必验证它能解**目标账号**的库（见下"多账号各自密钥"），不能想当然。
+
+**多账号 = 多密钥（4.x 三账号同进程）**：每个 `xwechat_files\<wxid>\db_storage` 有**各自独立的库密钥**，不是"当前登录微信"那一把。提取器抓到的是当时在开库的那个账号的 key。所以：
+1. 提取前先把**目标账号**切到前台、打开它的几个聊天，使其 DB 打开、密钥驻留内存（社区提示：密钥仅在登录后一小段窗口内全部驻留，久未访问的库密钥会被微信从内存清除——尽早提取）。
+2. 把 key 写进 `scripts/wechat_key.txt` 后，用 `python wcdb_decrypt.py --diagnose --key <key> --in "...\wxid_目标\db_storage\session\session.db"` 验证 page1 的 HMAC 是否命中；命中才是该账号的正确密钥。若解密失败，说明抓到的是别的账号的 key，需重新提取或换目标账号前台。
+
 ## 输出要求
 
 回复用户时优先给：

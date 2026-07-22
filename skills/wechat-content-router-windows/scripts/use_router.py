@@ -232,7 +232,7 @@ def select_session(config: dict):
     decrypt_module = load_importer("wechat_win_decrypt", SCRIPT_DIR / "wechat_win_decrypt.py")
     cached_key = wechat.get("_cached_key")
     if not cached_key:
-        print("需要先提取密钥（微信必须登录，以管理员身份运行）...")
+        print("需要先提取密钥：微信必须登录并以管理员身份运行（DLL 提取失败时会自动回退读取本目录 wechat_key.txt / key.tmp）...")
         try:
             cached_key = decrypt_module.extract_wechat_key()
             config["wechat"]["_cached_key"] = cached_key
