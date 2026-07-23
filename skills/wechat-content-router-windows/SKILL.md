@@ -31,7 +31,7 @@ description: >
 > - **聊天 / 专家入口（WorkBuddy 里召唤本专家）**：助手在**聊天里逐项问**客户（用下面的探测命令给出候选），拿到明确答复后，用 `init_local_config.py` 的**命令行参数非交互写配置**（命令见第 3 点末尾）。**绝不要在聊天里运行 `bootstrap_config.py` / `interactive_config`**——它们依赖子进程的 `input()`，客户在聊天里答不了，助手跑去跑就会卡住或偷用探测值静默写配置（"没给我选择的权利"的根因）。
 > - **终端入口（Windows 直接双击 `CONFIG-WIZARD.bat` / `START-HERE.bat`）**：走 CLI 交互向导 `interactive_config`，已**强制显式选择**（Obsidian 必须输入序号、多账号必须挑、本地目录不再有静默默认值）。这是给安装人员/客户在 Windows 终端里用的，不需要聊天。
 
-> **权限澄清（避免误解）**：本技能自动扫描（纯 Python 解密 session.db / contact.db、读链接）**不需要 frida、不需要管理员权限**。只有「从微信进程内存抽密钥」才需管理员。微信账号目录的自动定位（`list_all_accounts()` → `wechat_bridge.mjs` 的 `findAllAccountDirs()`）在**真实 Windows 上会自动找到、普通用户权限即可**；但若跑在 WorkBuddy 执行沙箱内，沙箱会禁掉注册表读取与全盘扫描，导致返回空——这是「沙箱在拦」，不是「本技能需要权限」。此时引导客户把 `xwechat_files\<账号>` 路径贴出来即可，并如实说明「在您自己电脑上直接跑会自动定位、不用管理员」。
+> **权限澄清（避免误解）**：本技能主路径用 **Frida 内存提取**（扫微信进程内存明文页），**需要 frida 与管理员权限**以注入 Weixin.exe，**但不需要数据库密钥**。Frida 会自动注入当前运行的微信进程，不需要 account_dir。若跑在 WorkBuddy 执行沙箱内，沙箱会阻止进程注入 → Frida attach 失败——这是「沙箱在拦」，不是「本技能坏了」。此时引导客户在 Windows 终端直接跑 `python scripts/use_router.py`，或双击 `START-HERE.bat`。
 
 1. **存到哪里（落盘位置）**
    - 先探测候选：`python -c "import init_local_config as c; print(c.detect_obsidian_vaults())"` 找 Obsidian vault；本地默认候选 `~/Documents/ImportedContent`。
@@ -39,10 +39,10 @@ description: >
    - 客户确认/给出的路径写入 `storage.mode`（`obsidian` / `local`）+ `vault_root` / `local_root`，并回显确认。
 
 2. **确认用哪个微信（账号）**
-   - 列出本机所有微信账号：`python -c "import wechat_win_decrypt as w; print(w.list_all_accounts())"`（返回每个 `xwechat_files/<账号>` 的 `account_dir` / `wxid` / `mtime`）。若返回空列表，说明当前运行环境（沙箱）禁了注册表读取与全盘扫描，按上方「权限澄清」引导客户把 `xwechat_files\<账号>` 路径贴出来，不要说成"需要权限"。
+   - 列出本机所有微信账号：`python -c "import wechat_win_decrypt as w; print(w.list_all_accounts())"`（返回每个 `xwechat_files/<账号>` 的 `account_dir` / `wxid` / `mtime`）。若返回空列表，说明当前运行环境（沙箱）禁了注册表读取与全盘扫描，引导客户说出当前登录的微信昵称或 wxid。
    - **多账号时，必须让客户从列表里挑一个**，绝不能默认绑"最近活跃"那个就开跑。
    - **单账号时也要展示出来问："就是这一个微信账号对吧？"** 让客户确认。
-   - 选中的 `account_dir` 写入 `wechat.account_dir`，`wxid` 写入 `wechat.selected_account_wxid` / `selected_account_label`。
+   - **Frida 内存提取不需要 `account_dir`**（自动注入 Weixin.exe 进程），只需记录选中账号的 wxid 写入 `wechat.selected_account_wxid` / `selected_account_label`。仅后备解密分支（非主路径，极少触发）才需要 `account_dir`。
 
 3. **确认数据源是客户的「文件传输助手」**
    - 默认从**文件传输助手**（会话 id = `filehelper`）读取链接——因为客户通常是把链接转发到文件传输助手再统一路由。
@@ -57,10 +57,11 @@ description: >
 # Obsidian 场景
 python scripts/init_local_config.py --mode obsidian --vault-root "<第1问选中的仓库路径>" \
   --wechat-enabled --chat-username "<filehelper 或 客户给的会话名>" \
-  --account-dir "<第2问选中的 account_dir>" --default-action wechat_monitor --monitor-mode manual
+  --default-action wechat_monitor --monitor-mode manual
 
 # 本地文件夹场景：把上面前两个参数换成这一行
 #   --mode local --local-root "<第1问选中的本地目录>"
+# （Frida 模式不需要 --account-dir；仅后备解密分支才需要）
 ```
 
 写完后读取 `scripts/config.json`，把摘要（存哪 / 哪个微信 / 文件传输助手或指定会话）回显给客户确认，再进入实际扫描或导入。
@@ -178,29 +179,20 @@ python3 scripts/import_xhs_note.py "<小红书链接或整段分享文案>"
 python3 scripts/import_wechat_mp_article.py "<公众号文章链接>"
 ```
 
-### 模式 C：走微信自动路由
+### 模式 C：直接命令行扫描+导入（不走菜单）
 
-先初始化配置：
-
-```bash
-python3 scripts/init_local_config.py --vault-root "/Users/yourname/Documents/ObsidianVault"
-```
-
-如果只是本地落盘，不接 Obsidian：
+先配置（同模式 A 的 `init_local_config.py`），然后一步完成 Frida 扫描 + 分类导入：
 
 ```bash
-python3 scripts/init_local_config.py --mode local --local-root "/Users/yourname/Documents/ImportedContent"
+python scripts/frida_route/run_frida_scan.py --seconds 120
+python scripts/frida_route/import_frida_links.py
 ```
 
-然后直接运行：
-
-```bash
-python3 scripts/run_wechat_router_pipeline.py
-```
+也可用 `use_router.py` 菜单2「跑一次微信自动扫描」，菜单内部自动走 Frida 链路。
 
 ## 只读查看器（可选 · 进阶）
 
-> 这是**可选附加功能**，不是主流程。主流程是上文「模式 C：走微信自动路由」——把链接转发到文件传输助手，一条命令自动识别并导入。查看器只在你想在网页里浏览整段微信聊天记录时才用。
+> 这是**可选附加功能**，不是主流程。主流程是上文「模式 C：直接命令行扫描+导入」——把链接转发到文件传输助手，两条命令自动识别并导入。查看器只在你想在网页里浏览整段微信聊天记录时才用。
 
 本 skill 内置一个**微信聊天记录只读查看器**。解密与查询已改为**纯 Python**（`wcdb_decrypt.py` + `viewer_query.py`，零原生依赖），**不再依赖会崩溃的 `wcdb_api.dll` / `WCDB.dll`**；仅密钥提取仍用独立的 `wx_key.dll`（hook 微信进程）。把微信加密数据库解密后以网页聊天界面展示。
 

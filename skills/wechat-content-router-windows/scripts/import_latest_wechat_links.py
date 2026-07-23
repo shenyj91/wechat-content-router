@@ -78,7 +78,7 @@ def normalize_state(state: dict) -> dict[str, list[str]]:
 
 def collect_recent_messages(config: dict, limit_per_db: int = 50) -> list[dict]:
     wechat = config.get("wechat") or {}
-    session_db = Path(wechat["session_db"])
+    session_db = Path(wechat.get("session_db") or str(message_dir / "session.db"))
     message_dir = Path(wechat["message_dir"])
     username = wechat["chat_username"]
     table_name = wechat.get("message_table") or f"Msg_{hashlib.md5(username.encode()).hexdigest()}"
